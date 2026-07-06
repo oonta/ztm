@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 
 	"github.com/quic-go/quic-go"
 
@@ -25,6 +26,8 @@ type Server struct {
 	mesh     PeerRelay
 	listener *quic.Listener
 	addr     string
+
+	active sync.WaitGroup
 }
 
 // ServerConfig configures the client tunnel server.
@@ -61,11 +64,30 @@ func (s *Server) Addr() string {
 	return s.addr
 }
 
+// Close stops accepting new client connections.
 func (s *Server) Close() error {
 	if s.listener != nil {
 		return s.listener.Close()
 	}
 	return nil
+}
+
+// Shutdown stops accepting and waits for active streams to finish or ctx cancellation.
+func (s *Server) Shutdown(ctx context.Context) error {
+	_ = s.Close()
+
+	done := make(chan struct{})
+	go func() {
+		s.active.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Server) acceptLoop(ctx context.Context) {
@@ -93,6 +115,8 @@ func (s *Server) handleConn(ctx context.Context, conn *quic.Conn) {
 }
 
 func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic.Stream) {
+	s.active.Add(1)
+	defer s.active.Done()
 	defer stream.Close()
 
 	clientID, err := ClientIDFromConn(conn)
@@ -126,19 +150,9 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	if s.mesh != nil {
 		peers = s.mesh.PeerIDs()
 	}
-	target, ok := router.Select(s.registry.FindByName(service), s.nodeID, peers)
-	if !ok {
+	candidates := router.Candidates(s.registry.FindByName(service), s.nodeID, peers)
+	if len(candidates) == 0 {
 		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "SERVICE_NOT_FOUND"})
-		return
-	}
-
-	if target.NodeID == s.nodeID {
-		s.relayLocal(stream, service, target)
-		return
-	}
-
-	if s.mesh == nil {
-		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ROUTE_FAILED"})
 		return
 	}
 
@@ -148,38 +162,50 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 		TargetPort:     req.TargetPort,
 		ClientIdentity: clientID,
 	}
-	peerStream, err := s.mesh.OpenRelay(ctx, target.NodeID, relayReq)
-	if err != nil {
-		log.Printf("tunnel: mesh relay %s via %s: %v", service, target.NodeID, err)
-		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ROUTE_FAILED"})
+
+	for _, target := range candidates {
+		if target.NodeID == s.nodeID {
+			if s.tryRelayLocal(stream, service, target) {
+				return
+			}
+			continue
+		}
+		if s.mesh == nil {
+			continue
+		}
+		peerStream, err := s.mesh.OpenRelay(ctx, target.NodeID, relayReq)
+		if err != nil {
+			log.Printf("tunnel: mesh relay %s via %s: %v", service, target.NodeID, err)
+			continue
+		}
+		if err := WriteConnectResponse(stream, ConnectResponse{OK: true, ResolvedNode: target.NodeID}); err != nil {
+			peerStream.Close()
+			return
+		}
+		if err := Relay(stream, peerStream); err != nil && err != io.EOF {
+			log.Printf("tunnel: relay %s via %s: %v", service, target.NodeID, err)
+		}
 		return
 	}
-	defer peerStream.Close()
 
-	if err := WriteConnectResponse(stream, ConnectResponse{OK: true, ResolvedNode: target.NodeID}); err != nil {
-		return
-	}
-
-	if err := Relay(stream, peerStream); err != nil && err != io.EOF {
-		log.Printf("tunnel: relay %s via %s: %v", service, target.NodeID, err)
-	}
+	_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ROUTE_FAILED"})
 }
 
-func (s *Server) relayLocal(stream *quic.Stream, service string, target registry.Service) {
+func (s *Server) tryRelayLocal(stream *quic.Stream, service string, target registry.Service) bool {
 	backend, err := proxy.DialTCP(target.Host, target.Port)
 	if err != nil {
-		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "BACKEND_UNREACHABLE"})
-		return
+		return false
 	}
-	defer backend.Close()
 
 	if err := WriteConnectResponse(stream, ConnectResponse{OK: true, ResolvedNode: s.nodeID}); err != nil {
-		return
+		backend.Close()
+		return false
 	}
 
 	if err := Relay(stream, backend); err != nil && err != io.EOF {
 		log.Printf("tunnel: relay %s: %v", service, err)
 	}
+	return true
 }
 
 // ClientIDFromConn extracts client id from QUIC connection TLS state.

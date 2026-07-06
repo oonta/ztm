@@ -36,6 +36,9 @@ func main() {
 		case "register":
 			cliRegister(os.Args[2:])
 			return
+		case "deregister":
+			cliDeregister(os.Args[2:])
+			return
 		case "enroll-client":
 			enrollClient(os.Args[2:])
 			return
@@ -59,6 +62,7 @@ func usage() {
   ztm-node status   --admin-url <url>    node status
   ztm-node services --admin-url <url>    list services
   ztm-node register --admin-url <url> --name <n> --port <p> [--host <h>]
+  ztm-node deregister --admin-url <url> --name <n>
   ztm-node enroll-client --data-dir <dir> --client-id <id>
 
 Run flags:
@@ -151,6 +155,33 @@ func cliRegister(args []string) {
 	}
 	data, _ := json.Marshal(payload)
 	resp, err := http.Post(*url+"/v1/services/register", "application/json", bytes.NewReader(data))
+	if err != nil {
+		log.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var out bytes.Buffer
+	_ = json.Indent(&out, body, "", "  ")
+	fmt.Println(out.String())
+}
+
+func cliDeregister(args []string) {
+	fs := flag.NewFlagSet("deregister", flag.ExitOnError)
+	url := fs.String("admin-url", "http://127.0.0.1:8080", "admin API base URL")
+	name := fs.String("name", "", "service name (required)")
+	_ = fs.Parse(args)
+
+	if *name == "" {
+		fmt.Fprintln(os.Stderr, "error: --name is required")
+		os.Exit(1)
+	}
+
+	payload := map[string]any{"name": *name}
+	data, _ := json.Marshal(payload)
+	resp, err := http.Post(*url+"/v1/services/deregister", "application/json", bytes.NewReader(data))
 	if err != nil {
 		log.Fatalf("request: %v", err)
 	}

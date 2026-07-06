@@ -95,6 +95,19 @@ func (r *Registry) DeregisterLocal(name string) (Service, bool) {
 	}, true
 }
 
+// LocalNames returns registered service names on this node.
+func (r *Registry) LocalNames() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.local))
+	for name := range r.local {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // LocalSnapshot returns serializable local state for gossip.
 func (r *Registry) LocalSnapshot() LocalState {
 	r.mu.RLock()

@@ -34,7 +34,8 @@ type Server struct {
 	meshPeers   func() []string
 	registry    *registry.Registry
 	gossip      *gossip.Cluster
-	onRegister  func(name, host string, port uint32, labels map[string]string) error
+	onRegister   func(name, host string, port uint32, labels map[string]string) error
+	onDeregister func(name string) error
 
 	httpServer *http.Server
 	boundAddr  string
@@ -49,7 +50,8 @@ type Options struct {
 	Gossip      *gossip.Cluster
 	MemberCount func() int
 	MeshPeers   func() []string
-	OnRegister  func(name, host string, port uint32, labels map[string]string) error
+	OnRegister   func(name, host string, port uint32, labels map[string]string) error
+	OnDeregister func(name string) error
 }
 
 func New(opts Options) *Server {
@@ -62,7 +64,8 @@ func New(opts Options) *Server {
 		gossip:      opts.Gossip,
 		memberCount: opts.MemberCount,
 		meshPeers:   opts.MeshPeers,
-		onRegister:  opts.OnRegister,
+		onRegister:   opts.OnRegister,
+		onDeregister: opts.OnDeregister,
 	}
 }
 
@@ -72,6 +75,7 @@ func (s *Server) Listen(addr string) (string, error) {
 	mux.HandleFunc("GET /v1/members", s.handleMembers)
 	mux.HandleFunc("GET /v1/services", s.handleServices)
 	mux.HandleFunc("POST /v1/services/register", s.handleRegister)
+	mux.HandleFunc("POST /v1/services/deregister", s.handleDeregister)
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -154,6 +158,31 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.onRegister(req.Name, req.Host, req.Port, req.Labels); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, s.registry.List())
+}
+
+type deregisterRequest struct {
+	Name string `json:"name"`
+}
+
+func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
+	var req deregisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	if s.onDeregister == nil {
+		http.Error(w, "deregister not configured", http.StatusInternalServerError)
+		return
+	}
+	if err := s.onDeregister(req.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	writeJSON(w, s.registry.List())

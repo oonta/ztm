@@ -36,3 +36,29 @@ func TestSelectSkipsUnreachablePeer(t *testing.T) {
 		t.Fatal("expected no route when peer not connected")
 	}
 }
+
+func TestCandidatesOrdersLocalThenRemotes(t *testing.T) {
+	services := []registry.Service{
+		{NodeID: "node3", Name: "api", Port: 3},
+		{NodeID: "node1", Name: "api", Port: 1},
+		{NodeID: "node2", Name: "api", Port: 2},
+	}
+	got := Candidates(services, "node1", []string{"node2", "node3"})
+	if len(got) != 3 {
+		t.Fatalf("got %d candidates: %+v", len(got), got)
+	}
+	if got[0].NodeID != "node1" || got[1].NodeID != "node2" || got[2].NodeID != "node3" {
+		t.Fatalf("order: %+v", got)
+	}
+}
+
+func TestCandidatesExcludesUnreachable(t *testing.T) {
+	services := []registry.Service{
+		{NodeID: "node2", Name: "api", Port: 2},
+		{NodeID: "node3", Name: "api", Port: 3},
+	}
+	got := Candidates(services, "node1", []string{"node3"})
+	if len(got) != 1 || got[0].NodeID != "node3" {
+		t.Fatalf("got %+v", got)
+	}
+}

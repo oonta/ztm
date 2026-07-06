@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -194,7 +195,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			return a.gossip.MemberCount()
 		},
 		MeshPeers: func() []string { return a.mesh.PeerIDs() },
-		OnRegister: a.registerService,
+		OnRegister:   a.registerService,
+		OnDeregister: a.deregisterService,
 	})
 	adminAddr, err := a.admin.Listen(a.cfg.AdminBind)
 	if err != nil {
@@ -208,12 +210,45 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	<-ctx.Done()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	a.leaveCluster(shutdownCtx)
+	return nil
+}
+
+func (a *Agent) leaveCluster(shutdownCtx context.Context) {
+	a.deregisterAllLocal()
+	time.Sleep(200 * time.Millisecond)
+
 	_ = a.admin.Shutdown(shutdownCtx)
+	if err := a.tunnel.Shutdown(shutdownCtx); err != nil {
+		log.Printf("agent: tunnel shutdown: %v", err)
+	}
 	_ = a.gossip.Shutdown()
-	_ = a.tunnel.Close()
-	return a.mesh.Close()
+	_ = a.mesh.Close()
+}
+
+func (a *Agent) deregisterAllLocal() {
+	if a.gossip == nil {
+		return
+	}
+	names := a.registry.LocalNames()
+	for _, name := range names {
+		if err := a.deregisterService(name); err != nil {
+			log.Printf("agent: deregister %s: %v", name, err)
+		}
+	}
+}
+
+func (a *Agent) propagateRegistryState(data []byte) {
+	if a.gossip == nil {
+		return
+	}
+	a.gossip.BroadcastState()
+	if len(data) > 0 {
+		a.gossip.PropagateState(data)
+	}
 }
 
 func (a *Agent) backgroundLoops(ctx context.Context) {
@@ -306,10 +341,26 @@ func (a *Agent) onMeshPeerDisconnected(peerID string) {
 
 func (a *Agent) registerService(name, host string, port uint32, labels map[string]string) error {
 	a.registry.RegisterLocal(name, host, port, labels)
-	a.gossip.BroadcastState()
 	if data, err := a.registry.MarshalLocalState(); err == nil {
-		a.gossip.PropagateState(data)
+		a.propagateRegistryState(data)
 	}
+	return nil
+}
+
+func (a *Agent) deregisterService(name string) error {
+	tombstone, ok := a.registry.DeregisterLocal(name)
+	if !ok {
+		return fmt.Errorf("service %q not found locally", name)
+	}
+	state := registry.LocalState{
+		NodeID:   a.cfg.NodeID,
+		Services: []registry.Service{tombstone},
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	a.propagateRegistryState(data)
 	return nil
 }
 
@@ -319,6 +370,14 @@ func (a *Agent) RegisterService(name, host string, port uint32, labels map[strin
 		return fmt.Errorf("agent not running")
 	}
 	return a.registerService(name, host, port, labels)
+}
+
+// DeregisterService removes a local service and gossips tombstones.
+func (a *Agent) DeregisterService(name string) error {
+	if a.gossip == nil {
+		return fmt.Errorf("agent not running")
+	}
+	return a.deregisterService(name)
 }
 
 // ClientAddr returns the client QUIC listen address.
