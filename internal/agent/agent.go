@@ -11,7 +11,9 @@ import (
 	"ztm/internal/gossip"
 	"ztm/internal/identity"
 	"ztm/internal/mesh"
+	"ztm/internal/policy"
 	"ztm/internal/registry"
+	"ztm/internal/tunnel"
 )
 
 // Config holds ztm-node runtime configuration.
@@ -20,9 +22,11 @@ type Config struct {
 	Cluster    string
 	DataDir    string
 	MeshBind   string
+	ClientBind string
 	GossipBind string
 	AdminBind  string
 	Join       string // gossip seed host:port
+	AllowService []string
 }
 
 // Agent coordinates node subsystems.
@@ -30,11 +34,13 @@ type Agent struct {
 	cfg      Config
 	identity *identity.Store
 	mesh     *mesh.Transport
+	tunnel   *tunnel.Server
 	gossip   *gossip.Cluster
 	registry *registry.Registry
 	admin    *admin.Server
 
 	meshAddr   string
+	clientAddr string
 	gossipAddr string
 	adminAddr  string
 
@@ -55,6 +61,9 @@ func New(cfg Config) (*Agent, error) {
 	}
 	if cfg.MeshBind == "" {
 		cfg.MeshBind = ":7444"
+	}
+	if cfg.ClientBind == "" {
+		cfg.ClientBind = ":7443"
 	}
 	if cfg.GossipBind == "" {
 		cfg.GossipBind = ":7946"
@@ -99,6 +108,30 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	a.meshAddr = a.mesh.Addr()
 	log.Printf("agent: node=%s cluster=%s mesh=%s", a.cfg.NodeID, a.cfg.Cluster, a.meshAddr)
+
+	tunnelTLS, err := a.identity.TunnelServerTLSConfig(a.cfg.NodeID)
+	if err != nil {
+		return fmt.Errorf("tunnel tls: %w", err)
+	}
+	a.tunnel = &tunnel.Server{}
+	pol := policy.New()
+	if len(a.cfg.AllowService) == 0 {
+		pol = policy.Permissive()
+	} else {
+		for _, svc := range a.cfg.AllowService {
+			pol.AllowService(svc)
+		}
+	}
+	if err := a.tunnel.Listen(ctx, a.cfg.ClientBind, tunnel.ServerConfig{
+		NodeID:   a.cfg.NodeID,
+		Registry: a.registry,
+		Policy:   pol,
+		TLS:      tunnelTLS,
+	}); err != nil {
+		return fmt.Errorf("tunnel listen: %w", err)
+	}
+	a.clientAddr = a.tunnel.Addr()
+	log.Printf("agent: client tunnel listening on %s", a.clientAddr)
 
 	key, err := gossip.LoadOrCreateKey(a.cfg.DataDir)
 	if err != nil {
@@ -169,6 +202,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	defer cancel()
 	_ = a.admin.Shutdown(shutdownCtx)
 	_ = a.gossip.Shutdown()
+	_ = a.tunnel.Close()
 	return a.mesh.Close()
 }
 
@@ -242,6 +276,11 @@ func (a *Agent) RegisterService(name, host string, port uint32, labels map[strin
 		return fmt.Errorf("agent not running")
 	}
 	return a.registerService(name, host, port, labels)
+}
+
+// ClientAddr returns the client QUIC listen address.
+func (a *Agent) ClientAddr() string {
+	return a.clientAddr
 }
 
 // MeshAddr returns the bound mesh listen address.

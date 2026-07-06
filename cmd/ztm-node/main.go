@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"ztm/internal/agent"
+	"ztm/internal/identity"
 )
 
 func main() {
@@ -33,6 +35,9 @@ func main() {
 			return
 		case "register":
 			cliRegister(os.Args[2:])
+			return
+		case "enroll-client":
+			enrollClient(os.Args[2:])
 			return
 		case "help", "-h", "--help":
 			usage()
@@ -54,6 +59,7 @@ func usage() {
   ztm-node status   --admin-url <url>    node status
   ztm-node services --admin-url <url>    list services
   ztm-node register --admin-url <url> --name <n> --port <p> [--host <h>]
+  ztm-node enroll-client --data-dir <dir> --client-id <id>
 
 Run flags:
 `)
@@ -66,10 +72,12 @@ func runServer(args []string) {
 	nodeID := fs.String("node-id", "", "unique node identifier (required)")
 	dataDir := fs.String("data-dir", "./data", "directory for CA and node certificates")
 	meshBind := fs.String("mesh-bind", ":7444", "inter-node QUIC listen address")
+	clientBind := fs.String("client-bind", ":7443", "client QUIC listen address")
 	gossipBind := fs.String("gossip-bind", ":7946", "gossip (memberlist) bind address")
 	adminBind := fs.String("admin-bind", "127.0.0.1:0", "admin HTTP API listen address (:0 = random free port)")
 	join := fs.String("join", "", "seed node gossip address host:port")
 	cluster := fs.String("cluster", "default", "cluster name")
+	allowService := fs.String("allow-service", "", "comma-separated allowed service patterns (empty = allow all)")
 	_ = fs.Parse(args)
 
 	if *nodeID == "" {
@@ -79,13 +87,15 @@ func runServer(args []string) {
 	}
 
 	cfg := agent.Config{
-		NodeID:     *nodeID,
-		Cluster:    *cluster,
-		DataDir:    *dataDir,
-		MeshBind:   *meshBind,
-		GossipBind: *gossipBind,
-		AdminBind:  *adminBind,
-		Join:       *join,
+		NodeID:       *nodeID,
+		Cluster:      *cluster,
+		DataDir:      *dataDir,
+		MeshBind:     *meshBind,
+		ClientBind:   *clientBind,
+		GossipBind:   *gossipBind,
+		AdminBind:    *adminBind,
+		Join:         *join,
+		AllowService: splitCSV(*allowService),
 	}
 
 	a, err := agent.New(cfg)
@@ -159,4 +169,43 @@ func parseAdminURL(args []string) string {
 	url := fs.String("admin-url", "http://127.0.0.1:8080", "admin API base URL")
 	_ = fs.Parse(args)
 	return *url
+}
+
+func enrollClient(args []string) {
+	fs := flag.NewFlagSet("enroll-client", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "./data", "cluster data directory")
+	clientID := fs.String("client-id", "", "client identifier (required)")
+	cluster := fs.String("cluster", "default", "cluster name")
+	_ = fs.Parse(args)
+
+	if *clientID == "" {
+		fmt.Fprintln(os.Stderr, "error: --client-id is required")
+		os.Exit(1)
+	}
+
+	store, err := identity.Open(*cluster, *dataDir)
+	if err != nil {
+		log.Fatalf("identity: %v", err)
+	}
+	if err := store.EnsureClientCert(*clientID); err != nil {
+		log.Fatalf("enroll: %v", err)
+	}
+	cert, key, ca := identity.ClientCertPaths(*dataDir, *clientID)
+	fmt.Printf("enrolled client %q\n", *clientID)
+	fmt.Printf("  cert: %s\n", cert)
+	fmt.Printf("  key:  %s\n", key)
+	fmt.Printf("  ca:   %s\n", ca)
+}
+
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
