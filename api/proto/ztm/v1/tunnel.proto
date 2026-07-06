@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package ztm.v1;
+
+option go_package = "ztm/api/proto/ztm/v1;ztmv1";
+
+// Data plane framing over QUIC streams.
+message TunnelFrame {
+  oneof frame {
+    ConnectRequest connect = 1;
+    ConnectResponse connect_ack = 2;
+    DataPayload data = 3;
+    CloseNotify close = 4;
+    PingFrame ping = 5;
+  }
+}
+
+message ConnectRequest {
+  string target_service = 1;
+  string target_host = 2;
+  uint32 target_port = 3;
+  string client_identity = 4;
+}
+
+message ConnectResponse {
+  bool ok = 1;
+  string reason = 2;
+  string resolved_node = 3;
+}
+
+message DataPayload {
+  bytes data = 1;
+  bool fin = 2;
+}
+
+message CloseNotify {
+  string reason = 1;
+}
+
+message PingFrame {
+  uint64 seq = 1;
+}

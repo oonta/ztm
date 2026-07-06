@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package ztm.v1;
+
+option go_package = "ztm/api/proto/ztm/v1;ztmv1";
+
+message PolicyRule {
+  string subject = 1;
+  repeated PolicyMatch allow = 2;
+  repeated PolicyMatch deny = 3;
+}
+
+message PolicyMatch {
+  oneof target {
+    string service = 1;
+    string relay = 2;
+  }
+  repeated uint32 ports = 3;
+}
+
+message PolicyBundle {
+  uint64 version = 1;
+  string cluster = 2;
+  repeated PolicyRule rules = 3;
+  int64 updated_at_unix = 4;
+}

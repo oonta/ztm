@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package ztm.v1;
+
+option go_package = "ztm/api/proto/ztm/v1;ztmv1";
+
+enum NodeStatus {
+  NODE_STATUS_UNSPECIFIED = 0;
+  NODE_STATUS_ALIVE = 1;
+  NODE_STATUS_SUSPECT = 2;
+  NODE_STATUS_DEAD = 3;
+}
+
+message Endpoint {
+  string host = 1;
+  uint32 port = 2;
+  string protocol = 3; // "tcp", "udp"
+}
+
+message NodeState {
+  string node_id = 1;
+  string mesh_addr = 2;
+  string client_addr = 3;
+  uint64 incarnation = 4;
+  NodeStatus status = 5;
+  repeated string capabilities = 6;
+  int64 updated_at_unix = 7;
+}
+
+enum GossipType {
+  GOSSIP_TYPE_UNSPECIFIED = 0;
+  GOSSIP_TYPE_NODE_STATE = 1;
+  GOSSIP_TYPE_SERVICE_ANNOUNCE = 2;
+  GOSSIP_TYPE_POLICY_BUNDLE = 3;
+}
+
+message GossipEnvelope {
+  string cluster = 1;
+  GossipType type = 2;
+  bytes payload = 3;
+  bytes signature = 4;
+}
+
+message ServiceAnnouncement {
+  string service_id = 1;
+  string node_id = 2;
+  string name = 3;
+  repeated Endpoint endpoints = 4;
+  map<string, string> labels = 5;
+  uint64 version = 6;
+  int64 ttl_sec = 7;
+  int64 announced_at_unix = 8;
+}

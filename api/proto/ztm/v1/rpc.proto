@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package ztm.v1;
+
+option go_package = "ztm/api/proto/ztm/v1;ztmv1";
+
+import "ztm/v1/gossip.proto";
+
+// Inter-node coordination API.
+service NodeRPC {
+  rpc JoinCluster(JoinClusterRequest) returns (JoinClusterResponse);
+  rpc ResolveService(ResolveServiceRequest) returns (ResolveServiceResponse);
+  rpc PushPolicy(PushPolicyRequest) returns (PushPolicyResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message JoinClusterRequest {
+  string join_token = 1;
+  string node_id = 2;
+  string gossip_addr = 3;
+  string mesh_addr = 4;
+  string client_addr = 5;
+}
+
+message JoinClusterResponse {
+  bytes node_cert_pem = 1;
+  bytes node_key_pem = 2;
+  bytes ca_cert_pem = 3;
+  string cluster = 4;
+  bytes gossip_secret = 5;
+}
+
+message ResolveServiceRequest {
+  string name = 1;
+  map<string, string> labels = 2;
+}
+
+message ResolveServiceResponse {
+  repeated ServiceAnnouncement services = 1;
+}
+
+message PushPolicyRequest {
+  bytes policy_bundle = 1; // serialized PolicyBundle
+  uint64 min_version = 2;
+}
+
+message PushPolicyResponse {
+  uint64 accepted_version = 1;
+}
+
+message HealthCheckRequest {
+  string target_node_id = 1;
+}
+
+message HealthCheckResponse {
+  bool reachable = 1;
+  uint32 latency_ms = 2;
+  bool mesh_ok = 3;
+  bool gossip_ok = 4;
+}
