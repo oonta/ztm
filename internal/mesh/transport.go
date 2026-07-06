@@ -30,6 +30,8 @@ type Transport struct {
 	listener *quic.Listener
 	addr     string
 
+	onDisconnect func(peerID string)
+
 	mu    sync.RWMutex
 	peers map[string]*quic.Conn
 }
@@ -42,6 +44,11 @@ func NewTransport(nodeID, cluster string, tlsConf *tls.Config) *Transport {
 		tlsConf: tlsConf,
 		peers:   make(map[string]*quic.Conn),
 	}
+}
+
+// SetOnDisconnect sets a callback when a peer disconnects.
+func (t *Transport) SetOnDisconnect(fn func(peerID string)) {
+	t.onDisconnect = fn
 }
 
 // Listen starts the QUIC mesh listener.
@@ -218,6 +225,9 @@ func (t *Transport) monitorPeer(_ context.Context, peerID string, conn *quic.Con
 		delete(t.peers, peerID)
 	}
 	t.mu.Unlock()
+	if t.onDisconnect != nil {
+		t.onDisconnect(peerID)
+	}
 	log.Printf("mesh: peer %s disconnected", peerID)
 }
 
