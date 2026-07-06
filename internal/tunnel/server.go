@@ -14,6 +14,7 @@ import (
 	"ztm/internal/policy"
 	"ztm/internal/proxy"
 	"ztm/internal/registry"
+	"ztm/internal/router"
 )
 
 // Server accepts client QUIC connections and proxies TCP flows.
@@ -21,6 +22,7 @@ type Server struct {
 	nodeID   string
 	registry *registry.Registry
 	policy   *policy.Policy
+	mesh     PeerRelay
 	listener *quic.Listener
 	addr     string
 }
@@ -30,6 +32,7 @@ type ServerConfig struct {
 	NodeID   string
 	Registry *registry.Registry
 	Policy   *policy.Policy
+	Mesh     PeerRelay
 	TLS      *tls.Config
 }
 
@@ -41,6 +44,7 @@ func (s *Server) Listen(ctx context.Context, addr string, cfg ServerConfig) erro
 	s.nodeID = cfg.NodeID
 	s.registry = cfg.Registry
 	s.policy = cfg.Policy
+	s.mesh = cfg.Mesh
 
 	ln, err := quic.ListenAddr(addr, cfg.TLS, nil)
 	if err != nil {
@@ -84,11 +88,11 @@ func (s *Server) handleConn(ctx context.Context, conn *quic.Conn) {
 		if err != nil {
 			return
 		}
-		go s.handleStream(conn, stream)
+		go s.handleStream(ctx, conn, stream)
 	}
 }
 
-func (s *Server) handleStream(conn *quic.Conn, stream *quic.Stream) {
+func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic.Stream) {
 	defer stream.Close()
 
 	clientID, err := ClientIDFromConn(conn)
@@ -118,13 +122,51 @@ func (s *Server) handleStream(conn *quic.Conn, stream *quic.Stream) {
 		return
 	}
 
-	host, port, ok := proxy.ResolveLocal(s.registry, s.nodeID, service)
+	peers := []string(nil)
+	if s.mesh != nil {
+		peers = s.mesh.PeerIDs()
+	}
+	target, ok := router.Select(s.registry.FindByName(service), s.nodeID, peers)
 	if !ok {
 		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "SERVICE_NOT_FOUND"})
 		return
 	}
 
-	backend, err := proxy.DialTCP(host, port)
+	if target.NodeID == s.nodeID {
+		s.relayLocal(stream, service, target)
+		return
+	}
+
+	if s.mesh == nil {
+		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ROUTE_FAILED"})
+		return
+	}
+
+	relayReq := ConnectRequest{
+		TargetService:  service,
+		TargetHost:     req.TargetHost,
+		TargetPort:     req.TargetPort,
+		ClientIdentity: clientID,
+	}
+	peerStream, err := s.mesh.OpenRelay(ctx, target.NodeID, relayReq)
+	if err != nil {
+		log.Printf("tunnel: mesh relay %s via %s: %v", service, target.NodeID, err)
+		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ROUTE_FAILED"})
+		return
+	}
+	defer peerStream.Close()
+
+	if err := WriteConnectResponse(stream, ConnectResponse{OK: true, ResolvedNode: target.NodeID}); err != nil {
+		return
+	}
+
+	if err := Relay(stream, peerStream); err != nil && err != io.EOF {
+		log.Printf("tunnel: relay %s via %s: %v", service, target.NodeID, err)
+	}
+}
+
+func (s *Server) relayLocal(stream *quic.Stream, service string, target registry.Service) {
+	backend, err := proxy.DialTCP(target.Host, target.Port)
 	if err != nil {
 		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "BACKEND_UNREACHABLE"})
 		return

@@ -103,6 +103,22 @@ func (a *Agent) wireMeshCallbacks() {
 // Run starts the agent until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	a.wireMeshCallbacks()
+
+	pol := policy.New()
+	if len(a.cfg.AllowService) == 0 {
+		pol = policy.Permissive()
+	} else {
+		for _, svc := range a.cfg.AllowService {
+			pol.AllowService(svc)
+		}
+	}
+
+	a.mesh.SetRelayHandler(&mesh.RelayHandler{
+		NodeID:   a.cfg.NodeID,
+		Registry: a.registry,
+		Policy:   pol,
+	})
+
 	if err := a.mesh.Listen(ctx, a.cfg.MeshBind); err != nil {
 		return err
 	}
@@ -114,18 +130,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		return fmt.Errorf("tunnel tls: %w", err)
 	}
 	a.tunnel = &tunnel.Server{}
-	pol := policy.New()
-	if len(a.cfg.AllowService) == 0 {
-		pol = policy.Permissive()
-	} else {
-		for _, svc := range a.cfg.AllowService {
-			pol.AllowService(svc)
-		}
-	}
 	if err := a.tunnel.Listen(ctx, a.cfg.ClientBind, tunnel.ServerConfig{
 		NodeID:   a.cfg.NodeID,
 		Registry: a.registry,
 		Policy:   pol,
+		Mesh:     a.mesh,
 		TLS:      tunnelTLS,
 	}); err != nil {
 		return fmt.Errorf("tunnel listen: %w", err)
@@ -195,6 +204,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	log.Printf("agent: admin http://%s", a.adminAddr)
 
 	go a.backgroundLoops(ctx)
+	go a.maintainMeshLinks(ctx)
 
 	<-ctx.Done()
 
@@ -253,6 +263,39 @@ func (a *Agent) connectMeshPeer(ctx context.Context, meta gossip.NodeMeta) {
 		return
 	}
 	log.Printf("agent: mesh linked to %s via gossip", meta.NodeID)
+}
+
+func (a *Agent) maintainMeshLinks(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if a.gossip == nil {
+				continue
+			}
+			connected := make(map[string]struct{}, len(a.mesh.PeerIDs()))
+			for _, id := range a.mesh.PeerIDs() {
+				connected[id] = struct{}{}
+			}
+			for _, member := range a.gossip.Members() {
+				peerID := member.Meta.NodeID
+				if peerID == "" || peerID == a.cfg.NodeID {
+					continue
+				}
+				if a.cfg.NodeID > peerID {
+					continue
+				}
+				if _, ok := connected[peerID]; ok {
+					continue
+				}
+				a.connectMeshPeer(ctx, member.Meta)
+			}
+		}
+	}
 }
 
 func (a *Agent) onMeshPeerDisconnected(peerID string) {

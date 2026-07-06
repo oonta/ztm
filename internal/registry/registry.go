@@ -157,6 +157,17 @@ func (r *Registry) MergeRemoteState(data []byte) error {
 	return nil
 }
 
+// FindByName returns all non-expired instances of a logical service name.
+func (r *Registry) FindByName(name string) []Service {
+	var out []Service
+	for _, svc := range r.List() {
+		if svc.Name == name {
+			out = append(out, svc)
+		}
+	}
+	return out
+}
+
 // List returns all non-expired services (local + remote).
 func (r *Registry) List() []Service {
 	r.mu.Lock()

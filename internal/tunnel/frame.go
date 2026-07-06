@@ -2,100 +2,40 @@ package tunnel
 
 import (
 	"bufio"
-	"encoding/json"
-	"fmt"
+	"context"
 	"io"
+
+	"ztm/internal/protocol"
 )
 
-// ConnectRequest opens a proxied flow to a service or host.
-type ConnectRequest struct {
-	Type           string `json:"type"`
-	TargetService  string `json:"target_service"`
-	TargetHost     string `json:"target_host,omitempty"`
-	TargetPort     uint32 `json:"target_port"`
-	ClientIdentity string `json:"client_identity"`
-}
+// ConnectRequest is a client or mesh relay connect frame.
+type ConnectRequest = protocol.ConnectRequest
 
-// ConnectResponse is the server's reply to ConnectRequest.
-type ConnectResponse struct {
-	Type         string `json:"type"`
-	OK           bool   `json:"ok"`
-	Reason       string `json:"reason,omitempty"`
-	ResolvedNode string `json:"resolved_node,omitempty"`
-}
-
-const (
-	FrameConnect    = "connect"
-	FrameConnectAck = "connect_ack"
-)
+// ConnectResponse is the connect acknowledgement frame.
+type ConnectResponse = protocol.ConnectResponse
 
 func WriteConnectRequest(w io.Writer, req ConnectRequest) error {
-	req.Type = FrameConnect
-	data, err := json.Marshal(req)
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	_, err = w.Write(data)
-	return err
+	return protocol.WriteConnectRequest(w, req)
 }
 
 func ReadConnectResponse(r *bufio.Reader) (ConnectResponse, error) {
-	line, err := r.ReadBytes('\n')
-	if err != nil {
-		return ConnectResponse{}, err
-	}
-	var resp ConnectResponse
-	if err := json.Unmarshal(line, &resp); err != nil {
-		return ConnectResponse{}, err
-	}
-	return resp, nil
+	return protocol.ReadConnectResponse(r)
 }
 
 func WriteConnectResponse(w io.Writer, resp ConnectResponse) error {
-	resp.Type = FrameConnectAck
-	data, err := json.Marshal(resp)
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	_, err = w.Write(data)
-	return err
+	return protocol.WriteConnectResponse(w, resp)
 }
 
 func ReadConnectRequest(r *bufio.Reader) (ConnectRequest, error) {
-	line, err := r.ReadBytes('\n')
-	if err != nil {
-		return ConnectRequest{}, err
-	}
-	var req ConnectRequest
-	if err := json.Unmarshal(line, &req); err != nil {
-		return ConnectRequest{}, err
-	}
-	if req.Type != FrameConnect {
-		return ConnectRequest{}, fmt.Errorf("unexpected frame type %q", req.Type)
-	}
-	return req, nil
+	return protocol.ReadConnectRequest(r)
 }
 
 func Relay(a, b io.ReadWriteCloser) error {
-	errCh := make(chan error, 2)
-	go func() { errCh <- copyAndClose(a, b) }()
-	go func() { errCh <- copyAndClose(b, a) }()
-	err1 := <-errCh
-	err2 := <-errCh
-	if err1 != nil && err1 != io.EOF {
-		return err1
-	}
-	if err2 != nil && err2 != io.EOF {
-		return err2
-	}
-	return nil
+	return protocol.Relay(a, b)
 }
 
-func copyAndClose(dst io.WriteCloser, src io.ReadCloser) error {
-	defer dst.Close()
-	defer src.Close()
-	_, err := io.Copy(dst, src)
-	return err
+// PeerRelay opens cross-node mesh relay streams.
+type PeerRelay interface {
+	PeerIDs() []string
+	OpenRelay(ctx context.Context, peerID string, req ConnectRequest) (io.ReadWriteCloser, error)
 }

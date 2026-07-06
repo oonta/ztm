@@ -32,6 +32,8 @@ type Transport struct {
 
 	onDisconnect func(peerID string)
 
+	relayHandler *RelayHandler
+
 	mu    sync.RWMutex
 	peers map[string]*quic.Conn
 }
@@ -46,6 +48,11 @@ func NewTransport(nodeID, cluster string, tlsConf *tls.Config) *Transport {
 	}
 }
 
+// SetRelayHandler handles inbound mesh relay streams.
+func (t *Transport) SetRelayHandler(h *RelayHandler) {
+	t.relayHandler = h
+}
+
 // SetOnDisconnect sets a callback when a peer disconnects.
 func (t *Transport) SetOnDisconnect(fn func(peerID string)) {
 	t.onDisconnect = fn
@@ -53,7 +60,7 @@ func (t *Transport) SetOnDisconnect(fn func(peerID string)) {
 
 // Listen starts the QUIC mesh listener.
 func (t *Transport) Listen(ctx context.Context, addr string) error {
-	ln, err := quic.ListenAddr(addr, t.tlsConf, nil)
+	ln, err := quic.ListenAddr(addr, t.tlsConf, quicConfig())
 	if err != nil {
 		return fmt.Errorf("mesh listen: %w", err)
 	}
@@ -71,7 +78,7 @@ func (t *Transport) Addr() string {
 
 // Connect dials a peer mesh address and completes the hello handshake.
 func (t *Transport) Connect(ctx context.Context, addr string) error {
-	conn, err := quic.DialAddr(ctx, addr, t.tlsConf, nil)
+	conn, err := quic.DialAddr(ctx, addr, t.tlsConf, quicConfig())
 	if err != nil {
 		return fmt.Errorf("mesh dial %s: %w", addr, err)
 	}
@@ -84,6 +91,7 @@ func (t *Transport) Connect(ctx context.Context, addr string) error {
 
 	t.addPeer(peerID, conn)
 	go t.monitorPeer(ctx, peerID, conn)
+	go t.serveRelayStreams(ctx, peerID, conn)
 	log.Printf("mesh: connected to peer %s at %s", peerID, addr)
 	return nil
 }
@@ -137,6 +145,7 @@ func (t *Transport) handleInbound(ctx context.Context, conn *quic.Conn) {
 
 	t.addPeer(peerID, conn)
 	go t.monitorPeer(ctx, peerID, conn)
+	go t.serveRelayStreams(ctx, peerID, conn)
 	log.Printf("mesh: accepted peer %s from %s", peerID, conn.RemoteAddr())
 }
 
