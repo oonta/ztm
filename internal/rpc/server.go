@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -31,6 +32,8 @@ type Options struct {
 	NodeID   string
 	Registry *registry.Registry
 	Policy   *policy.Policy
+	MeshPeers func() []string
+	GossipMemberCount func() int
 	TLS      *tls.Config
 }
 
@@ -56,7 +59,13 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 	s.addr = ln.Addr().String()
 	s.grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(opts.TLS)))
 
-	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{nodeID: opts.NodeID, registry: opts.Registry, policy: opts.Policy})
+	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{
+		nodeID:            opts.NodeID,
+		registry:          opts.Registry,
+		policy:            opts.Policy,
+		meshPeers:         opts.MeshPeers,
+		gossipMemberCount: opts.GossipMemberCount,
+	})
 
 	go func() {
 		_ = s.grpcServer.Serve(ln)
@@ -90,14 +99,34 @@ type nodeRPC struct {
 	nodeID   string
 	registry *registry.Registry
 	policy   *policy.Policy
+	meshPeers func() []string
+	gossipMemberCount func() int
 }
 
-func (n *nodeRPC) HealthCheck(_ context.Context, _ *ztmv1.HealthCheckRequest) (*ztmv1.HealthCheckResponse, error) {
+func (n *nodeRPC) HealthCheck(_ context.Context, req *ztmv1.HealthCheckRequest) (*ztmv1.HealthCheckResponse, error) {
+	start := time.Now()
+
+	if tid := req.GetTargetNodeId(); tid != "" && tid != n.nodeID {
+		return nil, status.Error(codes.NotFound, "unknown target node")
+	}
+
+	meshOK := true
+	if n.meshPeers != nil {
+		meshOK = len(n.meshPeers()) > 0
+	}
+	// If meshPeers isn't wired, treat mesh_ok as true (not applicable).
+
+	gossipOK := true
+	if n.gossipMemberCount != nil {
+		gossipOK = n.gossipMemberCount() >= 1
+	}
+	// If gossipMemberCount isn't wired, treat gossip_ok as true (not applicable).
+
 	return &ztmv1.HealthCheckResponse{
 		Reachable: true,
-		LatencyMs: 0,
-		MeshOk:    true,
-		GossipOk:  true,
+		LatencyMs: uint32(time.Since(start) / time.Millisecond),
+		MeshOk:    meshOK,
+		GossipOk:  gossipOK,
 	}, nil
 }
 

@@ -142,6 +142,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		NodeID:   a.cfg.NodeID,
 		Registry: a.registry,
 		Policy:   pol,
+		MeshPeers: func() []string {
+			return a.mesh.PeerIDs()
+		},
+		GossipMemberCount: func() int {
+			if a.gossip == nil {
+				return 0
+			}
+			return a.gossip.MemberCount()
+		},
 		TLS:      rpcTLS,
 	})
 	if err != nil {
