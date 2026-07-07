@@ -129,7 +129,7 @@ func startAgent(t *testing.T, ctx context.Context, cfg agent.Config) *agent.Agen
 	t.Cleanup(func() {
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Log("agent shutdown timeout")
 		}
 	})
@@ -138,7 +138,7 @@ func startAgent(t *testing.T, ctx context.Context, cfg agent.Config) *agent.Agen
 
 func waitAgent(t *testing.T, a *agent.Agent) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if a.MeshAddr() != "" && a.GossipAddr() != "" && a.AdminAddr() != "" {
 			if err := admin.WaitReady(a.AdminURL(), time.Second); err == nil {

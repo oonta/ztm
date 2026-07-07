@@ -79,6 +79,7 @@ func runServer(args []string) {
 	clientBind := fs.String("client-bind", ":7443", "client QUIC listen address")
 	gossipBind := fs.String("gossip-bind", ":7946", "gossip (memberlist) bind address")
 	adminBind := fs.String("admin-bind", "127.0.0.1:0", "admin HTTP API listen address (:0 = random free port)")
+	rpcBind := fs.String("rpc-bind", "127.0.0.1:0", "inter-node gRPC listen address (:0 = random free port)")
 	join := fs.String("join", "", "seed node gossip address host:port")
 	cluster := fs.String("cluster", "default", "cluster name")
 	allowService := fs.String("allow-service", "", "comma-separated allowed service patterns (empty = allow all)")
@@ -98,6 +99,7 @@ func runServer(args []string) {
 		ClientBind:   *clientBind,
 		GossipBind:   *gossipBind,
 		AdminBind:    *adminBind,
+		RPCBind:      *rpcBind,
 		Join:         *join,
 		AllowService: splitCSV(*allowService),
 	}

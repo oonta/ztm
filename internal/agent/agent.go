@@ -13,6 +13,7 @@ import (
 	"ztm/internal/identity"
 	"ztm/internal/mesh"
 	"ztm/internal/policy"
+	"ztm/internal/rpc"
 	"ztm/internal/registry"
 	"ztm/internal/tunnel"
 )
@@ -26,6 +27,7 @@ type Config struct {
 	ClientBind string
 	GossipBind string
 	AdminBind  string
+	RPCBind    string
 	Join       string // gossip seed host:port
 	AllowService []string
 }
@@ -39,11 +41,13 @@ type Agent struct {
 	gossip   *gossip.Cluster
 	registry *registry.Registry
 	admin    *admin.Server
+	rpc      *rpc.Server
 
 	meshAddr   string
 	clientAddr string
 	gossipAddr string
 	adminAddr  string
+	rpcAddr    string
 
 	mu          sync.Mutex
 	meshConnected map[string]struct{}
@@ -71,6 +75,9 @@ func New(cfg Config) (*Agent, error) {
 	}
 	if cfg.AdminBind == "" {
 		cfg.AdminBind = "127.0.0.1:0"
+	}
+	if cfg.RPCBind == "" {
+		cfg.RPCBind = "127.0.0.1:0"
 	}
 
 	store, err := identity.Open(cfg.Cluster, cfg.DataDir)
@@ -125,6 +132,22 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	a.meshAddr = a.mesh.Addr()
 	log.Printf("agent: node=%s cluster=%s mesh=%s", a.cfg.NodeID, a.cfg.Cluster, a.meshAddr)
+
+	rpcTLS, err := a.identity.RPCTLSConfig(a.cfg.NodeID, true)
+	if err != nil {
+		return fmt.Errorf("rpc tls: %w", err)
+	}
+	a.rpc = &rpc.Server{}
+	rpcAddr, err := a.rpc.Listen(a.cfg.RPCBind, rpc.Options{
+		NodeID:   a.cfg.NodeID,
+		Registry: a.registry,
+		TLS:      rpcTLS,
+	})
+	if err != nil {
+		return fmt.Errorf("rpc: %w", err)
+	}
+	a.rpcAddr = rpcAddr
+	log.Printf("agent: rpc %s", a.rpcAddr)
 
 	tunnelTLS, err := a.identity.TunnelServerTLSConfig(a.cfg.NodeID)
 	if err != nil {
@@ -186,6 +209,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		Cluster:    a.cfg.Cluster,
 		MeshAddr:   a.meshAddr,
 		GossipAddr: a.gossipAddr,
+		RPCAddr:    a.rpcAddr,
 		Registry:   a.registry,
 		Gossip:     a.gossip,
 		MemberCount: func() int {
@@ -225,6 +249,7 @@ func (a *Agent) leaveCluster(shutdownCtx context.Context) {
 	if err := a.tunnel.Shutdown(shutdownCtx); err != nil {
 		log.Printf("agent: tunnel shutdown: %v", err)
 	}
+	_ = a.rpc.Shutdown(shutdownCtx)
 	_ = a.gossip.Shutdown()
 	_ = a.mesh.Close()
 }

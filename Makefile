@@ -15,7 +15,10 @@
 GOEXE := $(shell go env GOEXE)
 
 proto:
-	buf generate
+	protoc -I api/proto \
+	  --go_out=api/proto --go_opt=paths=source_relative \
+	  --go-grpc_out=api/proto --go-grpc_opt=paths=source_relative \
+	  api/proto/ztm/v1/*.proto
 
 build:
 	go build -o bin/ztm-node$(GOEXE) ./cmd/ztm-node

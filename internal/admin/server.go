@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"ztm/internal/gossip"
 	"ztm/internal/registry"
 )
@@ -19,6 +22,7 @@ type Status struct {
 	Cluster      string `json:"cluster"`
 	MeshAddr     string `json:"mesh_addr"`
 	GossipAddr   string `json:"gossip_addr"`
+	RPCAddr      string `json:"rpc_addr"`
 	MemberCount  int    `json:"member_count"`
 	MeshPeers    []string `json:"mesh_peers"`
 	ServiceCount int    `json:"service_count"`
@@ -30,12 +34,15 @@ type Server struct {
 	cluster    string
 	meshAddr   string
 	gossipAddr string
+	rpcAddr    string
 	memberCount func() int
 	meshPeers   func() []string
 	registry    *registry.Registry
 	gossip      *gossip.Cluster
 	onRegister   func(name, host string, port uint32, labels map[string]string) error
 	onDeregister func(name string) error
+
+	metrics *metrics
 
 	httpServer *http.Server
 	boundAddr  string
@@ -46,6 +53,7 @@ type Options struct {
 	Cluster     string
 	MeshAddr    string
 	GossipAddr  string
+	RPCAddr     string
 	Registry    *registry.Registry
 	Gossip      *gossip.Cluster
 	MemberCount func() int
@@ -54,18 +62,50 @@ type Options struct {
 	OnDeregister func(name string) error
 }
 
+type metrics struct {
+	reg     *prometheus.Registry
+	members prometheus.Gauge
+	peers   prometheus.Gauge
+	services prometheus.Gauge
+}
+
 func New(opts Options) *Server {
+	mreg := prometheus.NewRegistry()
+	m := &metrics{
+		reg: mreg,
+		members: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "ztm",
+			Name:      "member_count",
+			Help:      "Number of gossip members visible to this node.",
+		}),
+		peers: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "ztm",
+			Name:      "mesh_peer_count",
+			Help:      "Number of connected mesh peers.",
+		}),
+		services: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "ztm",
+			Name:      "service_count",
+			Help:      "Number of services visible to this node (local + remote).",
+		}),
+	}
+	_ = mreg.Register(m.members)
+	_ = mreg.Register(m.peers)
+	_ = mreg.Register(m.services)
+
 	return &Server{
 		nodeID:      opts.NodeID,
 		cluster:     opts.Cluster,
 		meshAddr:    opts.MeshAddr,
 		gossipAddr:  opts.GossipAddr,
+		rpcAddr:     opts.RPCAddr,
 		registry:    opts.Registry,
 		gossip:      opts.Gossip,
 		memberCount: opts.MemberCount,
 		meshPeers:   opts.MeshPeers,
 		onRegister:   opts.OnRegister,
 		onDeregister: opts.OnDeregister,
+		metrics:      m,
 	}
 }
 
@@ -76,6 +116,7 @@ func (s *Server) Listen(addr string) (string, error) {
 	mux.HandleFunc("GET /v1/services", s.handleServices)
 	mux.HandleFunc("POST /v1/services/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/services/deregister", s.handleDeregister)
+	mux.Handle("GET /metrics", promhttp.HandlerFor(s.metrics.reg, promhttp.HandlerOpts{}))
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -113,9 +154,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		Cluster:      s.cluster,
 		MeshAddr:     s.meshAddr,
 		GossipAddr:   s.gossipAddr,
+		RPCAddr:      s.rpcAddr,
 		MemberCount:  s.memberCount(),
 		MeshPeers:    s.meshPeers(),
 		ServiceCount: len(s.registry.List()),
+	}
+	if s.metrics != nil {
+		s.metrics.members.Set(float64(st.MemberCount))
+		s.metrics.peers.Set(float64(len(st.MeshPeers)))
+		s.metrics.services.Set(float64(st.ServiceCount))
 	}
 	writeJSON(w, st)
 }

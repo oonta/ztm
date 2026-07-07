@@ -225,6 +225,48 @@ func (s *Store) TLSConfig(nodeID string, server bool) (*tls.Config, error) {
 	return cfg, nil
 }
 
+// RPCTLSConfig builds a mTLS config for gRPC over TLS.
+// gRPC requires ALPN "h2".
+func (s *Store) RPCTLSConfig(nodeID string, server bool) (*tls.Config, error) {
+	cert, err := s.NodeTLSCertificate(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	pool := s.CAPool()
+	cfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
+		ClientCAs:    pool,
+		MinVersion:   tls.VersionTLS13,
+		NextProtos:   []string{"h2"},
+	}
+
+	if server {
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	cfg.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return fmt.Errorf("no peer certificate")
+		}
+		peer, err := x509.ParseCertificate(rawCerts[0])
+		if err != nil {
+			return err
+		}
+		peerID, ok := ParseNodeID(s.cluster, peer.URIs)
+		if !ok {
+			return fmt.Errorf("peer missing SPIFFE node URI for cluster %q", s.cluster)
+		}
+		if peerID == nodeID {
+			return fmt.Errorf("peer connected to itself")
+		}
+		return nil
+	}
+
+	return cfg, nil
+}
+
 func parseCertKey(certPEM, keyPEM []byte) (*x509.Certificate, *rsa.PrivateKey, error) {
 	certBlock, _ := pem.Decode(certPEM)
 	if certBlock == nil {
