@@ -163,13 +163,28 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("tunnel tls: %w", err)
 	}
-	a.tunnel = &tunnel.Server{}
-	if err := a.tunnel.Listen(ctx, a.cfg.ClientBind, tunnel.ServerConfig{
+	serviceResolver := &rpc.ServiceResolver{
 		NodeID:   a.cfg.NodeID,
 		Registry: a.registry,
-		Policy:   pol,
-		Mesh:     a.mesh,
-		TLS:      tunnelTLS,
+		Identity: a.identity,
+		Members: func() []gossip.Member {
+			if a.gossip == nil {
+				return nil
+			}
+			return a.gossip.Members()
+		},
+		MeshPeers: func() []string {
+			return a.mesh.PeerIDs()
+		},
+	}
+	a.tunnel = &tunnel.Server{}
+	if err := a.tunnel.Listen(ctx, a.cfg.ClientBind, tunnel.ServerConfig{
+		NodeID:        a.cfg.NodeID,
+		Registry:      a.registry,
+		ServiceFinder: serviceResolver,
+		Policy:        pol,
+		Mesh:          a.mesh,
+		TLS:           tunnelTLS,
 	}); err != nil {
 		return fmt.Errorf("tunnel listen: %w", err)
 	}

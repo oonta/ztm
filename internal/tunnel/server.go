@@ -22,6 +22,7 @@ import (
 type Server struct {
 	nodeID   string
 	registry *registry.Registry
+	finder   ServiceFinder
 	policy   *policy.Policy
 	mesh     PeerRelay
 	listener *quic.Listener
@@ -30,13 +31,19 @@ type Server struct {
 	active sync.WaitGroup
 }
 
+// ServiceFinder resolves logical service names to instances.
+type ServiceFinder interface {
+	FindByName(ctx context.Context, name string) []registry.Service
+}
+
 // ServerConfig configures the client tunnel server.
 type ServerConfig struct {
-	NodeID   string
-	Registry *registry.Registry
-	Policy   *policy.Policy
-	Mesh     PeerRelay
-	TLS      *tls.Config
+	NodeID        string
+	Registry      *registry.Registry
+	ServiceFinder ServiceFinder
+	Policy        *policy.Policy
+	Mesh          PeerRelay
+	TLS           *tls.Config
 }
 
 // Listen starts the client QUIC listener.
@@ -46,6 +53,7 @@ func (s *Server) Listen(ctx context.Context, addr string, cfg ServerConfig) erro
 	}
 	s.nodeID = cfg.NodeID
 	s.registry = cfg.Registry
+	s.finder = cfg.ServiceFinder
 	s.policy = cfg.Policy
 	s.mesh = cfg.Mesh
 
@@ -150,7 +158,7 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	if s.mesh != nil {
 		peers = s.mesh.PeerIDs()
 	}
-	candidates := router.Candidates(s.registry.FindByName(service), s.nodeID, peers)
+	candidates := router.Candidates(s.findServices(ctx, service), s.nodeID, peers)
 	if len(candidates) == 0 {
 		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "SERVICE_NOT_FOUND"})
 		return
@@ -189,6 +197,16 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	}
 
 	_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ROUTE_FAILED"})
+}
+
+func (s *Server) findServices(ctx context.Context, name string) []registry.Service {
+	if s.finder != nil {
+		return s.finder.FindByName(ctx, name)
+	}
+	if s.registry != nil {
+		return s.registry.FindByName(name)
+	}
+	return nil
 }
 
 func (s *Server) tryRelayLocal(stream *quic.Stream, service string, target registry.Service) bool {
