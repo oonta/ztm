@@ -141,6 +141,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	rpcAddr, err := a.rpc.Listen(a.cfg.RPCBind, rpc.Options{
 		NodeID:   a.cfg.NodeID,
 		Registry: a.registry,
+		Policy:   pol,
 		TLS:      rpcTLS,
 	})
 	if err != nil {
@@ -272,6 +273,9 @@ func (a *Agent) propagateRegistryState(data []byte) {
 	}
 	a.gossip.BroadcastState()
 	if len(data) > 0 {
+		// Best-effort pushes can be dropped; send twice to reduce flakiness.
+		a.gossip.PropagateState(data)
+		time.Sleep(50 * time.Millisecond)
 		a.gossip.PropagateState(data)
 	}
 }

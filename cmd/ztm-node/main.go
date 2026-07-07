@@ -13,7 +13,13 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/proto"
+
+	ztmv1 "ztm/api/proto/ztm/v1"
 	"ztm/internal/agent"
 	"ztm/internal/identity"
 )
@@ -42,6 +48,9 @@ func main() {
 		case "enroll-client":
 			enrollClient(os.Args[2:])
 			return
+		case "push-policy":
+			cliPushPolicy(os.Args[2:])
+			return
 		case "help", "-h", "--help":
 			usage()
 			return
@@ -64,6 +73,7 @@ func usage() {
   ztm-node register --admin-url <url> --name <n> --port <p> [--host <h>]
   ztm-node deregister --admin-url <url> --name <n>
   ztm-node enroll-client --data-dir <dir> --client-id <id>
+  ztm-node push-policy --rpc-addr <host:port> --node-id <id> --data-dir <dir> [--allow-service ...] [--deny-service ...]
 
 Run flags:
 `)
@@ -228,6 +238,70 @@ func enrollClient(args []string) {
 	fmt.Printf("  cert: %s\n", cert)
 	fmt.Printf("  key:  %s\n", key)
 	fmt.Printf("  ca:   %s\n", ca)
+}
+
+func cliPushPolicy(args []string) {
+	fs := flag.NewFlagSet("push-policy", flag.ExitOnError)
+	rpcAddr := fs.String("rpc-addr", "", "target node RPC address host:port (required)")
+	nodeID := fs.String("node-id", "", "local node id for client cert (required)")
+	dataDir := fs.String("data-dir", "./data", "cluster data directory")
+	cluster := fs.String("cluster", "default", "cluster name")
+	allowService := fs.String("allow-service", "", "comma-separated allowed service patterns")
+	denyService := fs.String("deny-service", "", "comma-separated denied service patterns")
+	version := fs.Uint64("version", uint64(time.Now().Unix()), "policy bundle version")
+	_ = fs.Parse(args)
+
+	if *rpcAddr == "" || *nodeID == "" {
+		fmt.Fprintln(os.Stderr, "error: --rpc-addr and --node-id are required")
+		os.Exit(1)
+	}
+
+	store, err := identity.Open(*cluster, *dataDir)
+	if err != nil {
+		log.Fatalf("identity: %v", err)
+	}
+	if err := store.EnsureNodeCert(*nodeID); err != nil {
+		log.Fatalf("node cert: %v", err)
+	}
+	tlsConf, err := store.RPCTLSConfig(*nodeID, false)
+	if err != nil {
+		log.Fatalf("rpc tls: %v", err)
+	}
+
+	bundle := &ztmv1.PolicyBundle{
+		Version:       *version,
+		Cluster:       *cluster,
+		UpdatedAtUnix: time.Now().Unix(),
+		Rules: []*ztmv1.PolicyRule{{
+			Subject: "*",
+		}},
+	}
+	r := bundle.Rules[0]
+	for _, s := range splitCSV(*allowService) {
+		r.Allow = append(r.Allow, &ztmv1.PolicyMatch{Target: &ztmv1.PolicyMatch_Service{Service: s}})
+	}
+	for _, s := range splitCSV(*denyService) {
+		r.Deny = append(r.Deny, &ztmv1.PolicyMatch{Target: &ztmv1.PolicyMatch_Service{Service: s}})
+	}
+	data, err := proto.Marshal(bundle)
+	if err != nil {
+		log.Fatalf("marshal: %v", err)
+	}
+
+	conn, err := grpc.Dial(*rpcAddr, grpc.WithTransportCredentials(credentials.NewTLS(tlsConf)))
+	if err != nil {
+		log.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	client := ztmv1.NewNodeRPCClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resp, err := client.PushPolicy(ctx, &ztmv1.PushPolicyRequest{PolicyBundle: data, MinVersion: 0})
+	if err != nil {
+		log.Fatalf("push: %v", err)
+	}
+	fmt.Printf("{\"accepted_version\": %d}\n", resp.GetAcceptedVersion())
 }
 
 func splitCSV(s string) []string {

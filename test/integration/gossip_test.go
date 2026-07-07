@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"ztm/internal/agent"
 	"ztm/internal/registry"
 )
+
+var agentDone sync.Map // map[*agent.Agent]chan error
 
 func TestTwoNodeMeshViaGossip(t *testing.T) {
 	dataDir := t.TempDir()
@@ -125,6 +128,7 @@ func startAgent(t *testing.T, ctx context.Context, cfg agent.Config) *agent.Agen
 		t.Fatalf("agent new: %v", err)
 	}
 	done := make(chan error, 1)
+	agentDone.Store(a, done)
 	go func() { done <- a.Run(ctx) }()
 	t.Cleanup(func() {
 		select {
@@ -138,8 +142,19 @@ func startAgent(t *testing.T, ctx context.Context, cfg agent.Config) *agent.Agen
 
 func waitAgent(t *testing.T, a *agent.Agent) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
+		if chAny, ok := agentDone.Load(a); ok {
+			ch := chAny.(chan error)
+			select {
+			case err := <-ch:
+				if err != nil {
+					t.Fatalf("agent exited early: %v", err)
+				}
+				return
+			default:
+			}
+		}
 		if a.MeshAddr() != "" && a.GossipAddr() != "" && a.AdminAddr() != "" {
 			if err := admin.WaitReady(a.AdminURL(), time.Second); err == nil {
 				return

@@ -12,7 +12,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	ztmv1 "ztm/api/proto/ztm/v1"
+	"ztm/internal/policy"
 	"ztm/internal/registry"
+
+	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
@@ -27,6 +30,7 @@ type Server struct {
 type Options struct {
 	NodeID   string
 	Registry *registry.Registry
+	Policy   *policy.Policy
 	TLS      *tls.Config
 }
 
@@ -52,7 +56,7 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 	s.addr = ln.Addr().String()
 	s.grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(opts.TLS)))
 
-	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{nodeID: opts.NodeID, registry: opts.Registry})
+	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{nodeID: opts.NodeID, registry: opts.Registry, policy: opts.Policy})
 
 	go func() {
 		_ = s.grpcServer.Serve(ln)
@@ -85,6 +89,7 @@ type nodeRPC struct {
 	ztmv1.UnimplementedNodeRPCServer
 	nodeID   string
 	registry *registry.Registry
+	policy   *policy.Policy
 }
 
 func (n *nodeRPC) HealthCheck(_ context.Context, _ *ztmv1.HealthCheckRequest) (*ztmv1.HealthCheckResponse, error) {
@@ -122,8 +127,18 @@ func (n *nodeRPC) JoinCluster(context.Context, *ztmv1.JoinClusterRequest) (*ztmv
 	return nil, status.Error(codes.Unimplemented, "JoinCluster not implemented")
 }
 
-func (n *nodeRPC) PushPolicy(context.Context, *ztmv1.PushPolicyRequest) (*ztmv1.PushPolicyResponse, error) {
-	// Policy bundle format/versioning will be implemented in Phase 4.
-	return &ztmv1.PushPolicyResponse{AcceptedVersion: 0}, status.Error(codes.Unimplemented, "PushPolicy not implemented")
+func (n *nodeRPC) PushPolicy(_ context.Context, req *ztmv1.PushPolicyRequest) (*ztmv1.PushPolicyResponse, error) {
+	if n.policy == nil {
+		return nil, status.Error(codes.FailedPrecondition, "policy not configured")
+	}
+	if len(req.GetPolicyBundle()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "policy_bundle is required")
+	}
+	var b ztmv1.PolicyBundle
+	if err := proto.Unmarshal(req.GetPolicyBundle(), &b); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid policy bundle")
+	}
+	accepted, _ := n.policy.ApplyBundle(&b, req.GetMinVersion())
+	return &ztmv1.PushPolicyResponse{AcceptedVersion: accepted}, nil
 }
 
