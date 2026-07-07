@@ -194,6 +194,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		NodeID:    a.cfg.NodeID,
 		Cluster:   a.cfg.Cluster,
 		MeshAddr:  a.meshAddr,
+		RPCAddr:   a.rpcAddr,
 		BindAddr:  a.cfg.GossipBind,
 		Registry:  a.registry,
 		SecretKey: key,

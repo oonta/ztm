@@ -17,6 +17,7 @@ type NodeMeta struct {
 	NodeID   string `json:"node_id"`
 	Cluster  string `json:"cluster"`
 	MeshAddr string `json:"mesh_addr"`
+	RPCAddr  string `json:"rpc_addr"`
 }
 
 // Member describes a cluster member.
@@ -34,6 +35,7 @@ type Delegate struct {
 	nodeID   string
 	cluster  string
 	meshAddr string
+	rpcAddr  string
 	registry *registry.Registry
 
 	onMember OnMemberFunc
@@ -42,11 +44,12 @@ type Delegate struct {
 	broadcasts []memberlist.Broadcast
 }
 
-func NewDelegate(nodeID, cluster, meshAddr string, reg *registry.Registry, onMember OnMemberFunc) *Delegate {
+func NewDelegate(nodeID, cluster, meshAddr, rpcAddr string, reg *registry.Registry, onMember OnMemberFunc) *Delegate {
 	return &Delegate{
 		nodeID:   nodeID,
 		cluster:  cluster,
 		meshAddr: meshAddr,
+		rpcAddr:  rpcAddr,
 		registry: reg,
 		onMember: onMember,
 	}
@@ -57,6 +60,7 @@ func (d *Delegate) NodeMeta(limit int) []byte {
 		NodeID:   d.nodeID,
 		Cluster:  d.cluster,
 		MeshAddr: d.meshAddr,
+		RPCAddr:  d.rpcAddr,
 	})
 	if err != nil {
 		return nil
@@ -165,6 +169,7 @@ type Config struct {
 	NodeID    string
 	Cluster   string
 	MeshAddr  string
+	RPCAddr   string
 	BindAddr  string
 	Registry  *registry.Registry
 	SecretKey []byte
@@ -173,7 +178,7 @@ type Config struct {
 
 // Start creates and joins the gossip cluster.
 func Start(cfg Config, join []string) (*Cluster, error) {
-	delegate := NewDelegate(cfg.NodeID, cfg.Cluster, cfg.MeshAddr, cfg.Registry, cfg.OnMember)
+	delegate := NewDelegate(cfg.NodeID, cfg.Cluster, cfg.MeshAddr, cfg.RPCAddr, cfg.Registry, cfg.OnMember)
 
 	host, port, err := net.SplitHostPort(cfg.BindAddr)
 	if err != nil {
