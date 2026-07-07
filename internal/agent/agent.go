@@ -11,6 +11,7 @@ import (
 	"ztm/internal/admin"
 	"ztm/internal/gossip"
 	"ztm/internal/identity"
+	"ztm/internal/jointoken"
 	"ztm/internal/mesh"
 	"ztm/internal/policy"
 	"ztm/internal/rpc"
@@ -133,15 +134,44 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.meshAddr = a.mesh.Addr()
 	log.Printf("agent: node=%s cluster=%s mesh=%s", a.cfg.NodeID, a.cfg.Cluster, a.meshAddr)
 
-	rpcTLS, err := a.identity.RPCTLSConfig(a.cfg.NodeID, true)
+	key, err := gossip.LoadOrCreateKey(a.cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("gossip key: %w", err)
+	}
+	joinTokens, err := jointoken.Open(a.cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("join tokens: %w", err)
+	}
+
+	rpcTLS, err := a.identity.RPCTLSConfigServer(a.cfg.NodeID)
 	if err != nil {
 		return fmt.Errorf("rpc tls: %w", err)
 	}
 	a.rpc = &rpc.Server{}
 	rpcAddr, err := a.rpc.Listen(a.cfg.RPCBind, rpc.Options{
 		NodeID:   a.cfg.NodeID,
+		Cluster:  a.cfg.Cluster,
 		Registry: a.registry,
 		Policy:   pol,
+		Identity: a.identity,
+		JoinTokens: joinTokens,
+		GossipSecret: func() []byte {
+			return append([]byte(nil), key...)
+		},
+		NodeIDTaken: func(id string) bool {
+			if id == a.cfg.NodeID {
+				return true
+			}
+			if a.gossip == nil {
+				return false
+			}
+			for _, m := range a.gossip.Members() {
+				if m.Name == id || m.Meta.NodeID == id {
+					return true
+				}
+			}
+			return false
+		},
 		MeshPeers: func() []string {
 			return a.mesh.PeerIDs()
 		},
@@ -151,7 +181,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			return a.gossip.MemberCount()
 		},
-		TLS:      rpcTLS,
+		TLS: rpcTLS,
 	})
 	if err != nil {
 		return fmt.Errorf("rpc: %w", err)
@@ -190,11 +220,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	a.clientAddr = a.tunnel.Addr()
 	log.Printf("agent: client tunnel listening on %s", a.clientAddr)
-
-	key, err := gossip.LoadOrCreateKey(a.cfg.DataDir)
-	if err != nil {
-		return fmt.Errorf("gossip key: %w", err)
-	}
 
 	var join []string
 	if a.cfg.Join != "" {

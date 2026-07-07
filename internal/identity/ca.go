@@ -65,6 +65,14 @@ func (s *Store) loadOrCreateCA() error {
 		}
 		keyPEM, err := os.ReadFile(keyPath)
 		if err != nil {
+			if os.IsNotExist(err) {
+				cert, err := x509.ParseCertificate(certPEM)
+				if err != nil {
+					return err
+				}
+				s.caCert = cert
+				return nil
+			}
 			return err
 		}
 		cert, key, err := parseCertKey(certPEM, keyPEM)
@@ -111,6 +119,104 @@ func (s *Store) loadOrCreateCA() error {
 	s.caCert = cert
 	s.caKey = key
 	return nil
+}
+
+// Cluster returns the cluster name.
+func (s *Store) Cluster() string { return s.cluster }
+
+// CACertPEM returns the cluster CA certificate in PEM form.
+func (s *Store) CACertPEM() ([]byte, error) {
+	return os.ReadFile(filepath.Join(s.dir, caCertFile))
+}
+
+// NodeCertExists reports whether a node certificate is already on disk.
+func (s *Store) NodeCertExists(nodeID string) bool {
+	_, err := os.Stat(filepath.Join(s.dir, "nodes", nodeID, "cert.pem"))
+	return err == nil
+}
+
+// GenerateNodeCert creates a new node certificate and key without persisting them.
+func (s *Store) GenerateNodeCert(nodeID string) (certPEM, keyPEM []byte, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	spiffeURI, err := url.Parse(NodeURI(s.cluster, nodeID))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject: pkix.Name{
+			CommonName:   "node:" + nodeID,
+			Organization: []string{"ZTM"},
+		},
+		NotBefore:   time.Now().Add(-time.Hour),
+		NotAfter:    time.Now().AddDate(0, 0, 30),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		URIs:        []*url.URL{spiffeURI},
+		DNSNames:    []string{"localhost"},
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, s.caCert, &key.PublicKey, s.caKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	return certPEM, keyPEM, nil
+}
+
+// VerifyPeerNode validates a peer node certificate and returns its node ID.
+func (s *Store) VerifyPeerNode(cert *x509.Certificate) (string, error) {
+	if cert == nil {
+		return "", fmt.Errorf("no peer certificate")
+	}
+	if _, err := cert.Verify(x509.VerifyOptions{
+		Roots:     s.CAPool(),
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}); err != nil {
+		return "", err
+	}
+	nodeID, ok := ParseNodeID(s.cluster, cert.URIs)
+	if !ok {
+		return "", fmt.Errorf("peer missing SPIFFE node URI for cluster %q", s.cluster)
+	}
+	return nodeID, nil
+}
+
+// InstallFromJoin writes CA, node cert/key, and gossip key for a joined node.
+func InstallFromJoin(cluster, nodeID, dataDir string, caCertPEM, nodeCertPEM, nodeKeyPEM, gossipKey []byte) error {
+	if cluster == "" || nodeID == "" || dataDir == "" {
+		return fmt.Errorf("cluster, node id, and data directory are required")
+	}
+	if len(caCertPEM) == 0 || len(nodeCertPEM) == 0 || len(nodeKeyPEM) == 0 || len(gossipKey) != 32 {
+		return fmt.Errorf("invalid join materials")
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "ca"), 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "nodes", nodeID), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, caCertFile), caCertPEM, 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "nodes", nodeID, "cert.pem"), nodeCertPEM, 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "nodes", nodeID, "key.pem"), nodeKeyPEM, 0o600); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "gossip.key"), gossipKey, 0o600)
 }
 
 // EnsureNodeCert loads or issues a node certificate for nodeID.
@@ -223,6 +329,21 @@ func (s *Store) TLSConfig(nodeID string, server bool) (*tls.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// RPCTLSConfigServer builds server TLS for gRPC without requiring client certs.
+// JoinCluster is authenticated via join token; other RPC methods verify peer certs in handlers.
+func (s *Store) RPCTLSConfigServer(nodeID string) (*tls.Config, error) {
+	cert, err := s.NodeTLSCertificate(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS13,
+		NextProtos:   []string{"h2"},
+		ClientAuth:   tls.NoClientCert,
+	}, nil
 }
 
 // RPCTLSConfig builds a mTLS config for gRPC over TLS.

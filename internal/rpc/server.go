@@ -10,9 +10,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	ztmv1 "ztm/api/proto/ztm/v1"
+	"ztm/internal/identity"
+	"ztm/internal/jointoken"
 	"ztm/internal/policy"
 	"ztm/internal/registry"
 
@@ -29,12 +32,17 @@ type Server struct {
 }
 
 type Options struct {
-	NodeID   string
-	Registry *registry.Registry
-	Policy   *policy.Policy
-	MeshPeers func() []string
+	NodeID            string
+	Cluster           string
+	Registry          *registry.Registry
+	Policy            *policy.Policy
+	Identity          *identity.Store
+	JoinTokens        *jointoken.Store
+	GossipSecret      func() []byte
+	NodeIDTaken       func(string) bool
+	MeshPeers         func() []string
 	GossipMemberCount func() int
-	TLS      *tls.Config
+	TLS               *tls.Config
 }
 
 func (s *Server) Listen(addr string, opts Options) (string, error) {
@@ -61,8 +69,13 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 
 	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{
 		nodeID:            opts.NodeID,
+		cluster:           opts.Cluster,
 		registry:          opts.Registry,
 		policy:            opts.Policy,
+		identity:          opts.Identity,
+		joinTokens:        opts.JoinTokens,
+		gossipSecret:      opts.GossipSecret,
+		nodeIDTaken:       opts.NodeIDTaken,
 		meshPeers:         opts.MeshPeers,
 		gossipMemberCount: opts.GossipMemberCount,
 	})
@@ -96,14 +109,40 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 type nodeRPC struct {
 	ztmv1.UnimplementedNodeRPCServer
-	nodeID   string
-	registry *registry.Registry
-	policy   *policy.Policy
-	meshPeers func() []string
+	nodeID            string
+	cluster           string
+	registry          *registry.Registry
+	policy            *policy.Policy
+	identity          *identity.Store
+	joinTokens        *jointoken.Store
+	gossipSecret      func() []byte
+	nodeIDTaken       func(string) bool
+	meshPeers         func() []string
 	gossipMemberCount func() int
 }
 
-func (n *nodeRPC) HealthCheck(_ context.Context, req *ztmv1.HealthCheckRequest) (*ztmv1.HealthCheckResponse, error) {
+func (n *nodeRPC) requireNodePeer(ctx context.Context) error {
+	if n.identity == nil {
+		return status.Error(codes.Internal, "identity not configured")
+	}
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "no peer info")
+	}
+	ti, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(ti.State.PeerCertificates) == 0 {
+		return status.Error(codes.Unauthenticated, "client certificate required")
+	}
+	if _, err := n.identity.VerifyPeerNode(ti.State.PeerCertificates[0]); err != nil {
+		return status.Error(codes.Unauthenticated, err.Error())
+	}
+	return nil
+}
+
+func (n *nodeRPC) HealthCheck(ctx context.Context, req *ztmv1.HealthCheckRequest) (*ztmv1.HealthCheckResponse, error) {
+	if err := n.requireNodePeer(ctx); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 
 	if tid := req.GetTargetNodeId(); tid != "" && tid != n.nodeID {
@@ -130,7 +169,10 @@ func (n *nodeRPC) HealthCheck(_ context.Context, req *ztmv1.HealthCheckRequest) 
 	}, nil
 }
 
-func (n *nodeRPC) ResolveService(_ context.Context, req *ztmv1.ResolveServiceRequest) (*ztmv1.ResolveServiceResponse, error) {
+func (n *nodeRPC) ResolveService(ctx context.Context, req *ztmv1.ResolveServiceRequest) (*ztmv1.ResolveServiceResponse, error) {
+	if err := n.requireNodePeer(ctx); err != nil {
+		return nil, err
+	}
 	_ = req.GetLabels() // reserved for future filtering
 	instances := n.registry.FindByName(req.GetName())
 	out := make([]*ztmv1.ServiceAnnouncement, 0, len(instances))
@@ -152,11 +194,59 @@ func (n *nodeRPC) ResolveService(_ context.Context, req *ztmv1.ResolveServiceReq
 	return &ztmv1.ResolveServiceResponse{Services: out}, nil
 }
 
-func (n *nodeRPC) JoinCluster(context.Context, *ztmv1.JoinClusterRequest) (*ztmv1.JoinClusterResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "JoinCluster not implemented")
+func (n *nodeRPC) JoinCluster(_ context.Context, req *ztmv1.JoinClusterRequest) (*ztmv1.JoinClusterResponse, error) {
+	if n.joinTokens == nil || n.identity == nil {
+		return nil, status.Error(codes.FailedPrecondition, "join not configured")
+	}
+	if req.GetNodeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "node_id is required")
+	}
+	if req.GetJoinToken() == "" {
+		return nil, status.Error(codes.InvalidArgument, "join_token is required")
+	}
+	if err := n.joinTokens.Consume(req.GetJoinToken()); err != nil {
+		return nil, status.Error(codes.PermissionDenied, "invalid token")
+	}
+	if n.nodeIDTaken != nil && n.nodeIDTaken(req.GetNodeId()) {
+		return nil, status.Error(codes.AlreadyExists, "node id already taken")
+	}
+	if n.identity.NodeCertExists(req.GetNodeId()) {
+		return nil, status.Error(codes.AlreadyExists, "node id already taken")
+	}
+
+	certPEM, keyPEM, err := n.identity.GenerateNodeCert(req.GetNodeId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "issue cert: %v", err)
+	}
+	caPEM, err := n.identity.CACertPEM()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "ca cert: %v", err)
+	}
+	secret := []byte(nil)
+	if n.gossipSecret != nil {
+		secret = n.gossipSecret()
+	}
+	if len(secret) != 32 {
+		return nil, status.Error(codes.FailedPrecondition, "gossip secret unavailable")
+	}
+
+	cluster := n.cluster
+	if cluster == "" {
+		cluster = n.identity.Cluster()
+	}
+	return &ztmv1.JoinClusterResponse{
+		NodeCertPem:   certPEM,
+		NodeKeyPem:    keyPEM,
+		CaCertPem:     caPEM,
+		Cluster:       cluster,
+		GossipSecret:  secret,
+	}, nil
 }
 
-func (n *nodeRPC) PushPolicy(_ context.Context, req *ztmv1.PushPolicyRequest) (*ztmv1.PushPolicyResponse, error) {
+func (n *nodeRPC) PushPolicy(ctx context.Context, req *ztmv1.PushPolicyRequest) (*ztmv1.PushPolicyResponse, error) {
+	if err := n.requireNodePeer(ctx); err != nil {
+		return nil, err
+	}
 	if n.policy == nil {
 		return nil, status.Error(codes.FailedPrecondition, "policy not configured")
 	}

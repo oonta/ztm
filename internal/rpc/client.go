@@ -58,6 +58,14 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
+func (c *Client) JoinCluster(ctx context.Context, req *ztmv1.JoinClusterRequest) (*ztmv1.JoinClusterResponse, error) {
+	resp, err := c.rpc.JoinCluster(ctx, req)
+	if err != nil {
+		return nil, status.Convert(err).Err()
+	}
+	return resp, nil
+}
+
 func (c *Client) HealthCheck(ctx context.Context, targetNodeID string) (*ztmv1.HealthCheckResponse, error) {
 	resp, err := c.rpc.HealthCheck(ctx, &ztmv1.HealthCheckRequest{TargetNodeId: targetNodeID})
 	if err != nil {

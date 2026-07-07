@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +23,8 @@ import (
 	ztmv1 "ztm/api/proto/ztm/v1"
 	"ztm/internal/agent"
 	"ztm/internal/identity"
+	"ztm/internal/jointoken"
+	"ztm/internal/rpc"
 )
 
 func main() {
@@ -51,6 +54,22 @@ func main() {
 		case "push-policy":
 			cliPushPolicy(os.Args[2:])
 			return
+		case "token":
+			if len(os.Args) < 3 {
+				fmt.Fprintln(os.Stderr, "usage: ztm-node token create [--data-dir <dir>] [--ttl <duration>]")
+				os.Exit(1)
+			}
+			switch os.Args[2] {
+			case "create":
+				cliTokenCreate(os.Args[3:])
+			default:
+				fmt.Fprintf(os.Stderr, "unknown token subcommand %q\n", os.Args[2])
+				os.Exit(1)
+			}
+			return
+		case "join":
+			cliJoin(os.Args[2:])
+			return
 		case "help", "-h", "--help":
 			usage()
 			return
@@ -74,6 +93,8 @@ func usage() {
   ztm-node deregister --admin-url <url> --name <n>
   ztm-node enroll-client --data-dir <dir> --client-id <id>
   ztm-node push-policy --rpc-addr <host:port> --node-id <id> --data-dir <dir> [--allow-service ...] [--deny-service ...]
+  ztm-node token create --data-dir <dir> [--ttl 1h]
+  ztm-node join --rpc-addr <host:port> --token <t> --node-id <id> --data-dir <dir> --gossip-join <host:port>
 
 Run flags:
 `)
@@ -302,6 +323,71 @@ func cliPushPolicy(args []string) {
 		log.Fatalf("push: %v", err)
 	}
 	fmt.Printf("{\"accepted_version\": %d}\n", resp.GetAcceptedVersion())
+}
+
+func cliTokenCreate(args []string) {
+	fs := flag.NewFlagSet("token create", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "./data", "cluster data directory")
+	ttl := fs.Duration("ttl", time.Hour, "token validity duration")
+	_ = fs.Parse(args)
+
+	store, err := jointoken.Open(*dataDir)
+	if err != nil {
+		log.Fatalf("tokens: %v", err)
+	}
+	token, err := store.Create("node", *ttl)
+	if err != nil {
+		log.Fatalf("create: %v", err)
+	}
+	fmt.Println(token)
+}
+
+func cliJoin(args []string) {
+	fs := flag.NewFlagSet("join", flag.ExitOnError)
+	rpcAddr := fs.String("rpc-addr", "", "bootstrap node RPC address host:port (required)")
+	token := fs.String("token", "", "one-time join token (required)")
+	nodeID := fs.String("node-id", "", "new node identifier (required)")
+	dataDir := fs.String("data-dir", "./data", "directory to store joined node credentials")
+	gossipJoin := fs.String("gossip-join", "", "bootstrap gossip address host:port for ztm-node run --join (required)")
+	cluster := fs.String("cluster", "", "expected cluster name (optional)")
+	_ = fs.Parse(args)
+
+	if *rpcAddr == "" || *token == "" || *nodeID == "" || *gossipJoin == "" {
+		fmt.Fprintln(os.Stderr, "error: --rpc-addr, --token, --node-id, and --gossip-join are required")
+		os.Exit(1)
+	}
+
+	tlsConf := &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		NextProtos:         []string{"h2"},
+		InsecureSkipVerify: true,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := rpc.Dial(ctx, rpc.ClientOptions{Target: *rpcAddr, TLS: tlsConf, Timeout: 10 * time.Second})
+	if err != nil {
+		log.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+
+	resp, err := client.JoinCluster(ctx, &ztmv1.JoinClusterRequest{
+		JoinToken: *token,
+		NodeId:    *nodeID,
+	})
+	if err != nil {
+		log.Fatalf("join: %v", err)
+	}
+	if *cluster != "" && resp.GetCluster() != *cluster {
+		log.Fatalf("cluster mismatch: got %q want %q", resp.GetCluster(), *cluster)
+	}
+	if err := identity.InstallFromJoin(resp.GetCluster(), *nodeID, *dataDir, resp.GetCaCertPem(), resp.GetNodeCertPem(), resp.GetNodeKeyPem(), resp.GetGossipSecret()); err != nil {
+		log.Fatalf("install: %v", err)
+	}
+
+	fmt.Printf("joined cluster %q as node %q\n", resp.GetCluster(), *nodeID)
+	fmt.Printf("start with:\n")
+	fmt.Printf("  ztm-node run --node-id %s --data-dir %s --cluster %s --join %s\n", *nodeID, *dataDir, resp.GetCluster(), *gossipJoin)
 }
 
 func splitCSV(s string) []string {
