@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ztm-node
+  namespace: ztm
+data:
+  ZTM_CLUSTER: "default"
+  # Gossip seed host:port of an existing cluster member. Leave empty on the first
+  # bootstrap node, then set to e.g. "<node-ip>:7946" and rollout the DaemonSet.
+  ZTM_JOIN: ""
+  ZTM_MESH_BIND: ":7444"
+  ZTM_CLIENT_BIND: ":7443"
+  ZTM_GOSSIP_BIND: ":7946"
+  ZTM_ADMIN_BIND: "0.0.0.0:8080"
+  ZTM_RPC_BIND: "0.0.0.0:9090"
+  # Comma-separated service patterns; empty = allow all.
+  ZTM_ALLOW_SERVICE: ""
