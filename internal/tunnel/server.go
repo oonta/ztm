@@ -12,6 +12,7 @@ import (
 	"github.com/quic-go/quic-go"
 
 	"ztm/internal/identity"
+	"ztm/internal/metrics"
 	"ztm/internal/policy"
 	"ztm/internal/proxy"
 	"ztm/internal/registry"
@@ -25,6 +26,7 @@ type Server struct {
 	finder   ServiceFinder
 	policy   *policy.Policy
 	mesh     PeerRelay
+	metrics  *metrics.Collector
 	listener *quic.Listener
 	addr     string
 
@@ -43,6 +45,7 @@ type ServerConfig struct {
 	ServiceFinder ServiceFinder
 	Policy        *policy.Policy
 	Mesh          PeerRelay
+	Metrics       *metrics.Collector
 	TLS           *tls.Config
 }
 
@@ -56,6 +59,7 @@ func (s *Server) Listen(ctx context.Context, addr string, cfg ServerConfig) erro
 	s.finder = cfg.ServiceFinder
 	s.policy = cfg.Policy
 	s.mesh = cfg.Mesh
+	s.metrics = cfg.Metrics
 
 	ln, err := quic.ListenAddr(addr, cfg.TLS, nil)
 	if err != nil {
@@ -113,6 +117,10 @@ func (s *Server) acceptLoop(ctx context.Context) {
 }
 
 func (s *Server) handleConn(ctx context.Context, conn *quic.Conn) {
+	if s.metrics != nil {
+		s.metrics.TunnelConnOpened()
+		defer s.metrics.TunnelConnClosed()
+	}
 	for {
 		stream, err := conn.AcceptStream(ctx)
 		if err != nil {
@@ -126,6 +134,10 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	s.active.Add(1)
 	defer s.active.Done()
 	defer stream.Close()
+	if s.metrics != nil {
+		s.metrics.TunnelStreamOpened()
+		defer s.metrics.TunnelStreamClosed()
+	}
 
 	clientID, err := ClientIDFromConn(conn)
 	if err != nil {
@@ -150,6 +162,9 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	}
 
 	if !s.policy.Allow(clientID, service) {
+		if s.metrics != nil {
+			s.metrics.IncACLDenied()
+		}
 		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "ACL_DENIED"})
 		return
 	}
@@ -190,7 +205,7 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 			peerStream.Close()
 			return
 		}
-		if err := Relay(stream, peerStream); err != nil && err != io.EOF {
+		if err := metrics.Relay(stream, peerStream, s.metrics); err != nil && err != io.EOF {
 			log.Printf("tunnel: relay %s via %s: %v", service, target.NodeID, err)
 		}
 		return
@@ -220,7 +235,7 @@ func (s *Server) tryRelayLocal(stream *quic.Stream, service string, target regis
 		return false
 	}
 
-	if err := Relay(stream, backend); err != nil && err != io.EOF {
+	if err := metrics.Relay(stream, backend, s.metrics); err != nil && err != io.EOF {
 		log.Printf("tunnel: relay %s: %v", service, err)
 	}
 	return true
