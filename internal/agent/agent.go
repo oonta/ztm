@@ -13,6 +13,7 @@ import (
 	"ztm/internal/identity"
 	"ztm/internal/jointoken"
 	"ztm/internal/mesh"
+	"ztm/internal/metrics"
 	"ztm/internal/policy"
 	"ztm/internal/rpc"
 	"ztm/internal/registry"
@@ -112,6 +113,7 @@ func (a *Agent) wireMeshCallbacks() {
 // Run starts the agent until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	a.wireMeshCallbacks()
+	m := metrics.New()
 
 	pol := policy.New()
 	if len(a.cfg.AllowService) == 0 {
@@ -126,6 +128,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		NodeID:   a.cfg.NodeID,
 		Registry: a.registry,
 		Policy:   pol,
+		Metrics:  m,
 	})
 
 	if err := a.mesh.Listen(ctx, a.cfg.MeshBind); err != nil {
@@ -181,7 +184,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			return a.gossip.MemberCount()
 		},
-		TLS: rpcTLS,
+		Metrics: m,
+		TLS:     rpcTLS,
 	})
 	if err != nil {
 		return fmt.Errorf("rpc: %w", err)
@@ -214,6 +218,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		ServiceFinder: serviceResolver,
 		Policy:        pol,
 		Mesh:          a.mesh,
+		Metrics:       m,
 		TLS:           tunnelTLS,
 	}); err != nil {
 		return fmt.Errorf("tunnel listen: %w", err)
@@ -272,6 +277,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		MeshPeers: func() []string { return a.mesh.PeerIDs() },
 		OnRegister:   a.registerService,
 		OnDeregister: a.deregisterService,
+		Metrics:      m,
 	})
 	adminAddr, err := a.admin.Listen(a.cfg.AdminBind)
 	if err != nil {

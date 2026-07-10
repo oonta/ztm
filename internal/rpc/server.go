@@ -16,6 +16,7 @@ import (
 	ztmv1 "ztm/api/proto/ztm/v1"
 	"ztm/internal/identity"
 	"ztm/internal/jointoken"
+	"ztm/internal/metrics"
 	"ztm/internal/policy"
 	"ztm/internal/registry"
 
@@ -42,6 +43,7 @@ type Options struct {
 	NodeIDTaken       func(string) bool
 	MeshPeers         func() []string
 	GossipMemberCount func() int
+	Metrics           *metrics.Collector
 	TLS               *tls.Config
 }
 
@@ -65,7 +67,10 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 	s.registry = opts.Registry
 	s.ln = ln
 	s.addr = ln.Addr().String()
-	s.grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(opts.TLS)))
+	s.grpcServer = grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(opts.TLS)),
+		grpc.UnaryInterceptor(rpcMetricsInterceptor(opts.Metrics)),
+	)
 
 	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{
 		nodeID:            opts.NodeID,
@@ -85,6 +90,20 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 	}()
 
 	return s.addr, nil
+}
+
+func rpcMetricsInterceptor(m *metrics.Collector) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		resp, err := handler(ctx, req)
+		if m != nil {
+			code := codes.OK
+			if err != nil {
+				code = status.Code(err)
+			}
+			m.ObserveRPC(info.FullMethod, code.String())
+		}
+		return resp, err
+	}
 }
 
 func (s *Server) Addr() string { return s.addr }

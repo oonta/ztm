@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"ztm/internal/gossip"
+	"ztm/internal/metrics"
 	"ztm/internal/registry"
 )
 
@@ -42,7 +42,7 @@ type Server struct {
 	onRegister   func(name, host string, port uint32, labels map[string]string) error
 	onDeregister func(name string) error
 
-	metrics *metrics
+	metrics *metrics.Collector
 
 	httpServer *http.Server
 	boundAddr  string
@@ -60,38 +60,14 @@ type Options struct {
 	MeshPeers   func() []string
 	OnRegister   func(name, host string, port uint32, labels map[string]string) error
 	OnDeregister func(name string) error
-}
-
-type metrics struct {
-	reg     *prometheus.Registry
-	members prometheus.Gauge
-	peers   prometheus.Gauge
-	services prometheus.Gauge
+	Metrics      *metrics.Collector
 }
 
 func New(opts Options) *Server {
-	mreg := prometheus.NewRegistry()
-	m := &metrics{
-		reg: mreg,
-		members: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "ztm",
-			Name:      "member_count",
-			Help:      "Number of gossip members visible to this node.",
-		}),
-		peers: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "ztm",
-			Name:      "mesh_peer_count",
-			Help:      "Number of connected mesh peers.",
-		}),
-		services: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "ztm",
-			Name:      "service_count",
-			Help:      "Number of services visible to this node (local + remote).",
-		}),
+	m := opts.Metrics
+	if m == nil {
+		m = metrics.New()
 	}
-	_ = mreg.Register(m.members)
-	_ = mreg.Register(m.peers)
-	_ = mreg.Register(m.services)
 
 	return &Server{
 		nodeID:      opts.NodeID,
@@ -116,7 +92,7 @@ func (s *Server) Listen(addr string) (string, error) {
 	mux.HandleFunc("GET /v1/services", s.handleServices)
 	mux.HandleFunc("POST /v1/services/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/services/deregister", s.handleDeregister)
-	mux.Handle("GET /metrics", promhttp.HandlerFor(s.metrics.reg, promhttp.HandlerOpts{}))
+	mux.Handle("GET /metrics", promhttp.HandlerFor(s.metrics.Reg, promhttp.HandlerOpts{}))
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -160,9 +136,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		ServiceCount: len(s.registry.List()),
 	}
 	if s.metrics != nil {
-		s.metrics.members.Set(float64(st.MemberCount))
-		s.metrics.peers.Set(float64(len(st.MeshPeers)))
-		s.metrics.services.Set(float64(st.ServiceCount))
+		s.metrics.Members.Set(float64(st.MemberCount))
+		s.metrics.Peers.Set(float64(len(st.MeshPeers)))
+		s.metrics.Services.Set(float64(st.ServiceCount))
 	}
 	writeJSON(w, st)
 }

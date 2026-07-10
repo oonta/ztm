@@ -9,6 +9,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
+	"ztm/internal/metrics"
 	"ztm/internal/policy"
 	"ztm/internal/protocol"
 	"ztm/internal/proxy"
@@ -20,6 +21,7 @@ type RelayHandler struct {
 	NodeID   string
 	Registry *registry.Registry
 	Policy   *policy.Policy
+	Metrics  *metrics.Collector
 }
 
 // HandleStream proxies a mesh relay request to a local backend.
@@ -47,6 +49,9 @@ func (h *RelayHandler) HandleStream(peerID string, stream *quic.Stream) {
 		clientID = "mesh:" + peerID
 	}
 	if !h.Policy.Allow(clientID, service) {
+		if h.Metrics != nil {
+			h.Metrics.IncACLDenied()
+		}
 		_ = protocol.WriteConnectResponse(stream, protocol.ConnectResponse{OK: false, Reason: "ACL_DENIED"})
 		return
 	}
@@ -68,7 +73,7 @@ func (h *RelayHandler) HandleStream(peerID string, stream *quic.Stream) {
 		return
 	}
 
-	if err := protocol.Relay(stream, backend); err != nil && err != io.EOF {
+	if err := metrics.Relay(stream, backend, h.Metrics); err != nil && err != io.EOF {
 		log.Printf("mesh relay: %s via %s: %v", service, peerID, err)
 	}
 }
