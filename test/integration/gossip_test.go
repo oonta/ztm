@@ -123,6 +123,7 @@ func TestThreeNodeGossipAndServiceRegistry(t *testing.T) {
 
 func startAgent(t *testing.T, ctx context.Context, cfg agent.Config) *agent.Agent {
 	t.Helper()
+	cfg = ensureAgentBinds(cfg)
 	a, err := agent.New(cfg)
 	if err != nil {
 		t.Fatalf("agent new: %v", err)

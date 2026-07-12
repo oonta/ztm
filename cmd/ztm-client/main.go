@@ -29,6 +29,10 @@ func main() {
 	keyFile := fs.String("key", "", "client private key PEM")
 	caFile := fs.String("ca", "", "cluster CA certificate PEM")
 	socksListen := fs.String("socks-listen", "127.0.0.1:1080", "local SOCKS5 listen address")
+	tunMode := fs.Bool("tun", false, "Linux TUN mode (requires root/CAP_NET_ADMIN)")
+	tunDevice := fs.String("tun-device", "ztun0", "TUN interface name")
+	tunCIDR := fs.String("tun-cidr", "100.127.0.0/24", "route CIDR through TUN")
+	tunDNS := fs.String("tun-dns", "100.127.0.1", "DNS listen address for *.ztm resolution")
 	_ = fs.Parse(args)
 
 	if *nodeAddr == "" {
@@ -49,12 +53,20 @@ func main() {
 		KeyFile:     *keyFile,
 		CAFile:      *caFile,
 		SocksListen: *socksListen,
+		TUN:         *tunMode,
+		TunDevice:   *tunDevice,
+		TunCIDR:     *tunCIDR,
+		TunDNS:      *tunDNS,
 	})
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	log.Printf("ztm-client: node=%s socks=%s", *nodeAddr, *socksListen)
+	if *tunMode {
+		log.Printf("ztm-client: node=%s tun=%s cidr=%s", *nodeAddr, *tunDevice, *tunCIDR)
+	} else {
+		log.Printf("ztm-client: node=%s socks=%s", *nodeAddr, *socksListen)
+	}
 	if err := a.Run(ctx); err != nil && ctx.Err() == nil {
 		log.Fatalf("client: %v", err)
 	}

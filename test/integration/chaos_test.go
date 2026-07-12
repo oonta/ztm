@@ -3,6 +3,7 @@ package integration
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"testing"
@@ -155,6 +156,138 @@ func TestChaosNodeRestartRejoinsMesh(t *testing.T) {
 
 	cancel2b()
 	cancel1()
+}
+
+// TestChaosServiceNodePartitionRecovery simulates isolating the service-bearing node
+// from the mesh and verifies traffic recovers after it rejoins.
+func TestChaosServiceNodePartitionRecovery(t *testing.T) {
+	echo, echoAddr := startEchoServer(t)
+	defer echo.Close()
+	_, portStr, _ := net.SplitHostPort(echoAddr)
+	echoPort := atoi(portStr)
+
+	dataDir := t.TempDir()
+	cluster := "test"
+
+	store, err := identity.Open(cluster, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureClientCert("alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	node1 := startAgent(t, ctx1, agent.Config{
+		NodeID: "node1", Cluster: cluster, DataDir: dataDir,
+		MeshBind: "127.0.0.1:0", ClientBind: "127.0.0.1:0",
+		GossipBind: "127.0.0.1:0", AdminBind: "127.0.0.1:0",
+	})
+	waitAgent(t, node1)
+	waitForClientAddr(t, node1)
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	node2 := startAgent(t, ctx2, agent.Config{
+		NodeID: "node2", Cluster: cluster, DataDir: dataDir,
+		MeshBind: "127.0.0.1:0", ClientBind: "127.0.0.1:0",
+		GossipBind: "127.0.0.1:0", AdminBind: "127.0.0.1:0",
+		Join: node1.GossipAddr(),
+	})
+	waitAgent(t, node2)
+
+	ctx3, cancel3 := context.WithCancel(context.Background())
+	node3 := startAgent(t, ctx3, agent.Config{
+		NodeID: "node3", Cluster: cluster, DataDir: dataDir,
+		MeshBind: "127.0.0.1:0", ClientBind: "127.0.0.1:0",
+		GossipBind: "127.0.0.1:0", AdminBind: "127.0.0.1:0",
+		Join: node1.GossipAddr(),
+	})
+	waitAgent(t, node3)
+
+	waitForMembers(t, node1, 3)
+	waitForPeers(t, node1, node3)
+
+	if err := registerService(node3.AdminURL(), "echo.remote", "127.0.0.1", echoPort); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	waitForService(t, node1, "echo.remote", "node3")
+
+	clientCtx, clientCancel := context.WithCancel(context.Background())
+	defer clientCancel()
+	go func() {
+		c := client.New(client.Config{
+			NodeAddr:    node1.ClientAddr(),
+			Cluster:     cluster,
+			DataDir:     dataDir,
+			ClientID:    "alice",
+			SocksListen: "127.0.0.1:19202",
+		})
+		_ = c.Run(clientCtx)
+	}()
+	waitForTCP(t, "127.0.0.1:19202")
+
+	socksEcho := func() error {
+		conn, err := net.Dial("tcp", "127.0.0.1:19202")
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		if err := socks5Connect(conn, "echo.remote", uint16(echoPort)); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(conn, "partition-test\n"); err != nil {
+			return err
+		}
+		line, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil {
+			return err
+		}
+		if line != "partition-test\n" {
+			return fmt.Errorf("echo got %q", line)
+		}
+		return nil
+	}
+
+	if err := socksEcho(); err != nil {
+		t.Fatalf("before partition: %v", err)
+	}
+
+	// Partition node3 from the cluster (abrupt shutdown, no graceful leave).
+	cancel3()
+	waitForPeerGone(t, node1, "node3")
+	waitForMemberCount(t, node1, 2)
+
+	// Restart node3 and wait for mesh + service propagation.
+	ctx3b, cancel3b := context.WithCancel(context.Background())
+	node3b := startAgent(t, ctx3b, agent.Config{
+		NodeID: "node3", Cluster: cluster, DataDir: dataDir,
+		MeshBind: "127.0.0.1:0", ClientBind: "127.0.0.1:0",
+		GossipBind: "127.0.0.1:0", AdminBind: "127.0.0.1:0",
+		Join: node1.GossipAddr(),
+	})
+	waitAgent(t, node3b)
+	waitForMemberCount(t, node1, 3)
+	waitForPeersDeadline(t, node1, node3b, "node3", "node1", 45*time.Second)
+
+	if err := registerService(node3b.AdminURL(), "echo.remote", "127.0.0.1", echoPort); err != nil {
+		t.Fatalf("re-register after recovery: %v", err)
+	}
+	waitForService(t, node1, "echo.remote", "node3")
+
+	deadline := time.Now().Add(15 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := socksEcho(); err == nil {
+			cancel1()
+			cancel2()
+			cancel3b()
+			return
+		} else {
+			lastErr = err
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("after partition recovery: %v", lastErr)
 }
 
 func waitForPeerGone(t *testing.T, a *agent.Agent, peerID string) {

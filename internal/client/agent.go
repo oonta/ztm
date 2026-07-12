@@ -26,9 +26,15 @@ type Config struct {
 	KeyFile     string
 	CAFile      string
 	SocksListen string
+
+	// TUN enables Linux TUN mode (full-tunnel via virtual 100.127.0.0/24).
+	TUN       bool
+	TunDevice string
+	TunCIDR   string
+	TunDNS    string
 }
 
-// Agent runs the client tunnel and SOCKS5 proxy.
+// Agent runs the client tunnel and SOCKS5 or TUN proxy.
 type Agent struct {
 	cfg Config
 }
@@ -41,10 +47,19 @@ func New(cfg Config) *Agent {
 	if cfg.SocksListen == "" {
 		cfg.SocksListen = "127.0.0.1:1080"
 	}
+	if cfg.TunDevice == "" {
+		cfg.TunDevice = "ztun0"
+	}
+	if cfg.TunCIDR == "" {
+		cfg.TunCIDR = "100.127.0.0/24"
+	}
+	if cfg.TunDNS == "" {
+		cfg.TunDNS = "100.127.0.1"
+	}
 	return &Agent{cfg: cfg}
 }
 
-// Run starts SOCKS5 and the QUIC tunnel until ctx is cancelled.
+// Run starts the client until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	tlsConf, clientIdentity, err := a.tlsConfig()
 	if err != nil {
@@ -57,22 +72,35 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	defer tc.Close()
 
+	open := a.tunnelOpener(tc, clientIdentity)
+	if a.cfg.TUN {
+		return a.runTUN(ctx, open)
+	}
+	return a.runSocks(ctx, open)
+}
+
+func (a *Agent) tunnelOpener(tc *tunnel.Client, clientIdentity string) func(context.Context, string, uint16) (net.Conn, error) {
+	return func(ctx context.Context, host string, port uint16) (net.Conn, error) {
+		service := proxy.ServiceNameFromHost(host)
+		if name, ok := serviceFromVirtualIP(host); ok {
+			service = name
+		}
+		stream, err := tc.OpenStream(ctx, clientIdentity, service, uint32(port))
+		if err != nil {
+			return nil, err
+		}
+		return &streamConn{Stream: stream}, nil
+	}
+}
+
+func (a *Agent) runSocks(ctx context.Context, open func(context.Context, string, uint16) (net.Conn, error)) error {
 	ln, err := net.Listen("tcp", a.cfg.SocksListen)
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
 
-	handler := &socks5.Handler{
-		Open: func(ctx context.Context, host string, port uint16) (net.Conn, error) {
-			service := proxy.ServiceNameFromHost(host)
-			stream, err := tc.OpenStream(ctx, clientIdentity, service, uint32(port))
-			if err != nil {
-				return nil, err
-			}
-			return &streamConn{Stream: stream}, nil
-		},
-	}
+	handler := &socks5.Handler{Open: open}
 	return handler.Serve(ctx, ln)
 }
 
