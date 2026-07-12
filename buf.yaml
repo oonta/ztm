@@ -7,7 +7,3 @@ lint:
     - DEFAULT
   except:
     - PACKAGE_VERSION_SUFFIX
-deps:
-  googleapis:
-    module: buf.build/googleapis/googleapis
-    version: main
