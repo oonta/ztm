@@ -246,6 +246,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		join = []string{joinAddr}
 	}
 
+	gossipSigner, err := a.identity.EnsureGossipSigner(a.cfg.NodeID)
+	if err != nil {
+		return fmt.Errorf("gossip signer: %w", err)
+	}
+
 	gossipCluster, err := gossip.Start(gossip.Config{
 		NodeID:    a.cfg.NodeID,
 		Cluster:   a.cfg.Cluster,
@@ -254,6 +259,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		BindAddr:  a.cfg.GossipBind,
 		Registry:  a.registry,
 		SecretKey: key,
+		Signer:    gossipSigner,
 		OnMember: func(meta gossip.NodeMeta) {
 			a.connectMeshPeer(ctx, meta)
 		},
