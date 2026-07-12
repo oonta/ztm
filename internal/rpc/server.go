@@ -72,7 +72,7 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 		grpc.UnaryInterceptor(rpcMetricsInterceptor(opts.Metrics)),
 	)
 
-	ztmv1.RegisterNodeRPCServer(s.grpcServer, &nodeRPC{
+	ztmv1.RegisterNodeServiceServer(s.grpcServer, &nodeRPC{
 		nodeID:            opts.NodeID,
 		cluster:           opts.Cluster,
 		registry:          opts.Registry,
@@ -127,7 +127,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 type nodeRPC struct {
-	ztmv1.UnimplementedNodeRPCServer
+	ztmv1.UnimplementedNodeServiceServer
 	nodeID            string
 	cluster           string
 	registry          *registry.Registry

@@ -13,11 +13,11 @@ import (
 	ztmv1 "ztm/api/proto/ztm/v1"
 )
 
-// Client is a small mTLS gRPC client for NodeRPC.
+// Client is a small mTLS gRPC client for NodeService.
 type Client struct {
 	target string
 	conn   *grpc.ClientConn
-	rpc    ztmv1.NodeRPCClient
+	rpc    ztmv1.NodeServiceClient
 }
 
 type ClientOptions struct {
@@ -47,7 +47,7 @@ func Dial(ctx context.Context, opts ClientOptions) (*Client, error) {
 	return &Client{
 		target: opts.Target,
 		conn:   conn,
-		rpc:    ztmv1.NewNodeRPCClient(conn),
+		rpc:    ztmv1.NewNodeServiceClient(conn),
 	}, nil
 }
 

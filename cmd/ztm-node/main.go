@@ -314,7 +314,7 @@ func cliPushPolicy(args []string) {
 		log.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
-	client := ztmv1.NewNodeRPCClient(conn)
+	client := ztmv1.NewNodeServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

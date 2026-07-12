@@ -7,7 +7,7 @@ option go_package = "ztm/api/proto/ztm/v1;ztmv1";
 import "ztm/v1/gossip.proto";
 
 // Inter-node coordination API.
-service NodeRPC {
+service NodeService {
   rpc JoinCluster(JoinClusterRequest) returns (JoinClusterResponse);
   rpc ResolveService(ResolveServiceRequest) returns (ResolveServiceResponse);
   rpc PushPolicy(PushPolicyRequest) returns (PushPolicyResponse);

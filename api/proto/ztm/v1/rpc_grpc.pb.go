@@ -19,219 +19,219 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NodeRPC_JoinCluster_FullMethodName    = "/ztm.v1.NodeRPC/JoinCluster"
-	NodeRPC_ResolveService_FullMethodName = "/ztm.v1.NodeRPC/ResolveService"
-	NodeRPC_PushPolicy_FullMethodName     = "/ztm.v1.NodeRPC/PushPolicy"
-	NodeRPC_HealthCheck_FullMethodName    = "/ztm.v1.NodeRPC/HealthCheck"
+	NodeService_JoinCluster_FullMethodName    = "/ztm.v1.NodeService/JoinCluster"
+	NodeService_ResolveService_FullMethodName = "/ztm.v1.NodeService/ResolveService"
+	NodeService_PushPolicy_FullMethodName     = "/ztm.v1.NodeService/PushPolicy"
+	NodeService_HealthCheck_FullMethodName    = "/ztm.v1.NodeService/HealthCheck"
 )
 
-// NodeRPCClient is the client API for NodeRPC service.
+// NodeServiceClient is the client API for NodeService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Inter-node coordination API.
-type NodeRPCClient interface {
+type NodeServiceClient interface {
 	JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error)
 	ResolveService(ctx context.Context, in *ResolveServiceRequest, opts ...grpc.CallOption) (*ResolveServiceResponse, error)
 	PushPolicy(ctx context.Context, in *PushPolicyRequest, opts ...grpc.CallOption) (*PushPolicyResponse, error)
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
 
-type nodeRPCClient struct {
+type nodeServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewNodeRPCClient(cc grpc.ClientConnInterface) NodeRPCClient {
-	return &nodeRPCClient{cc}
+func NewNodeServiceClient(cc grpc.ClientConnInterface) NodeServiceClient {
+	return &nodeServiceClient{cc}
 }
 
-func (c *nodeRPCClient) JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error) {
+func (c *nodeServiceClient) JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JoinClusterResponse)
-	err := c.cc.Invoke(ctx, NodeRPC_JoinCluster_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, NodeService_JoinCluster_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *nodeRPCClient) ResolveService(ctx context.Context, in *ResolveServiceRequest, opts ...grpc.CallOption) (*ResolveServiceResponse, error) {
+func (c *nodeServiceClient) ResolveService(ctx context.Context, in *ResolveServiceRequest, opts ...grpc.CallOption) (*ResolveServiceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ResolveServiceResponse)
-	err := c.cc.Invoke(ctx, NodeRPC_ResolveService_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, NodeService_ResolveService_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *nodeRPCClient) PushPolicy(ctx context.Context, in *PushPolicyRequest, opts ...grpc.CallOption) (*PushPolicyResponse, error) {
+func (c *nodeServiceClient) PushPolicy(ctx context.Context, in *PushPolicyRequest, opts ...grpc.CallOption) (*PushPolicyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PushPolicyResponse)
-	err := c.cc.Invoke(ctx, NodeRPC_PushPolicy_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, NodeService_PushPolicy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *nodeRPCClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+func (c *nodeServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HealthCheckResponse)
-	err := c.cc.Invoke(ctx, NodeRPC_HealthCheck_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, NodeService_HealthCheck_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// NodeRPCServer is the server API for NodeRPC service.
-// All implementations must embed UnimplementedNodeRPCServer
+// NodeServiceServer is the server API for NodeService service.
+// All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
 //
 // Inter-node coordination API.
-type NodeRPCServer interface {
+type NodeServiceServer interface {
 	JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error)
 	ResolveService(context.Context, *ResolveServiceRequest) (*ResolveServiceResponse, error)
 	PushPolicy(context.Context, *PushPolicyRequest) (*PushPolicyResponse, error)
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
-	mustEmbedUnimplementedNodeRPCServer()
+	mustEmbedUnimplementedNodeServiceServer()
 }
 
-// UnimplementedNodeRPCServer must be embedded to have
+// UnimplementedNodeServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedNodeRPCServer struct{}
+type UnimplementedNodeServiceServer struct{}
 
-func (UnimplementedNodeRPCServer) JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error) {
+func (UnimplementedNodeServiceServer) JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method JoinCluster not implemented")
 }
-func (UnimplementedNodeRPCServer) ResolveService(context.Context, *ResolveServiceRequest) (*ResolveServiceResponse, error) {
+func (UnimplementedNodeServiceServer) ResolveService(context.Context, *ResolveServiceRequest) (*ResolveServiceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveService not implemented")
 }
-func (UnimplementedNodeRPCServer) PushPolicy(context.Context, *PushPolicyRequest) (*PushPolicyResponse, error) {
+func (UnimplementedNodeServiceServer) PushPolicy(context.Context, *PushPolicyRequest) (*PushPolicyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PushPolicy not implemented")
 }
-func (UnimplementedNodeRPCServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
+func (UnimplementedNodeServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
 }
-func (UnimplementedNodeRPCServer) mustEmbedUnimplementedNodeRPCServer() {}
-func (UnimplementedNodeRPCServer) testEmbeddedByValue()                 {}
+func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
+func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
 
-// UnsafeNodeRPCServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to NodeRPCServer will
+// UnsafeNodeServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to NodeServiceServer will
 // result in compilation errors.
-type UnsafeNodeRPCServer interface {
-	mustEmbedUnimplementedNodeRPCServer()
+type UnsafeNodeServiceServer interface {
+	mustEmbedUnimplementedNodeServiceServer()
 }
 
-func RegisterNodeRPCServer(s grpc.ServiceRegistrar, srv NodeRPCServer) {
-	// If the following call panics, it indicates UnimplementedNodeRPCServer was
+func RegisterNodeServiceServer(s grpc.ServiceRegistrar, srv NodeServiceServer) {
+	// If the following call panics, it indicates UnimplementedNodeServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&NodeRPC_ServiceDesc, srv)
+	s.RegisterService(&NodeService_ServiceDesc, srv)
 }
 
-func _NodeRPC_JoinCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _NodeService_JoinCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(JoinClusterRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NodeRPCServer).JoinCluster(ctx, in)
+		return srv.(NodeServiceServer).JoinCluster(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NodeRPC_JoinCluster_FullMethodName,
+		FullMethod: NodeService_JoinCluster_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeRPCServer).JoinCluster(ctx, req.(*JoinClusterRequest))
+		return srv.(NodeServiceServer).JoinCluster(ctx, req.(*JoinClusterRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NodeRPC_ResolveService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _NodeService_ResolveService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ResolveServiceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NodeRPCServer).ResolveService(ctx, in)
+		return srv.(NodeServiceServer).ResolveService(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NodeRPC_ResolveService_FullMethodName,
+		FullMethod: NodeService_ResolveService_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeRPCServer).ResolveService(ctx, req.(*ResolveServiceRequest))
+		return srv.(NodeServiceServer).ResolveService(ctx, req.(*ResolveServiceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NodeRPC_PushPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _NodeService_PushPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PushPolicyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NodeRPCServer).PushPolicy(ctx, in)
+		return srv.(NodeServiceServer).PushPolicy(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NodeRPC_PushPolicy_FullMethodName,
+		FullMethod: NodeService_PushPolicy_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeRPCServer).PushPolicy(ctx, req.(*PushPolicyRequest))
+		return srv.(NodeServiceServer).PushPolicy(ctx, req.(*PushPolicyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NodeRPC_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _NodeService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthCheckRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NodeRPCServer).HealthCheck(ctx, in)
+		return srv.(NodeServiceServer).HealthCheck(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NodeRPC_HealthCheck_FullMethodName,
+		FullMethod: NodeService_HealthCheck_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeRPCServer).HealthCheck(ctx, req.(*HealthCheckRequest))
+		return srv.(NodeServiceServer).HealthCheck(ctx, req.(*HealthCheckRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// NodeRPC_ServiceDesc is the grpc.ServiceDesc for NodeRPC service.
+// NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var NodeRPC_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "ztm.v1.NodeRPC",
-	HandlerType: (*NodeRPCServer)(nil),
+var NodeService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ztm.v1.NodeService",
+	HandlerType: (*NodeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "JoinCluster",
-			Handler:    _NodeRPC_JoinCluster_Handler,
+			Handler:    _NodeService_JoinCluster_Handler,
 		},
 		{
 			MethodName: "ResolveService",
-			Handler:    _NodeRPC_ResolveService_Handler,
+			Handler:    _NodeService_ResolveService_Handler,
 		},
 		{
 			MethodName: "PushPolicy",
-			Handler:    _NodeRPC_PushPolicy_Handler,
+			Handler:    _NodeService_PushPolicy_Handler,
 		},
 		{
 			MethodName: "HealthCheck",
-			Handler:    _NodeRPC_HealthCheck_Handler,
+			Handler:    _NodeService_HealthCheck_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

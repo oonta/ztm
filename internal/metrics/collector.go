@@ -62,7 +62,7 @@ func New() *Collector {
 		RPCRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "ztm",
 			Name:      "rpc_requests_total",
-			Help:      "NodeRPC requests by method and gRPC status code.",
+			Help:      "NodeService requests by method and gRPC status code.",
 		}, []string{"method", "code"}),
 	}
 	for _, col := range []prometheus.Collector{

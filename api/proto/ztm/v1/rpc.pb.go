@@ -519,8 +519,8 @@ const file_ztm_v1_rpc_proto_rawDesc = "" +
 	"\n" +
 	"latency_ms\x18\x02 \x01(\rR\tlatencyMs\x12\x17\n" +
 	"\amesh_ok\x18\x03 \x01(\bR\x06meshOk\x12\x1b\n" +
-	"\tgossip_ok\x18\x04 \x01(\bR\bgossipOk2\xaf\x02\n" +
-	"\aNodeRPC\x12F\n" +
+	"\tgossip_ok\x18\x04 \x01(\bR\bgossipOk2\xb3\x02\n" +
+	"\vNodeService\x12F\n" +
 	"\vJoinCluster\x12\x1a.ztm.v1.JoinClusterRequest\x1a\x1b.ztm.v1.JoinClusterResponse\x12O\n" +
 	"\x0eResolveService\x12\x1d.ztm.v1.ResolveServiceRequest\x1a\x1e.ztm.v1.ResolveServiceResponse\x12C\n" +
 	"\n" +
@@ -555,14 +555,14 @@ var file_ztm_v1_rpc_proto_goTypes = []any{
 var file_ztm_v1_rpc_proto_depIdxs = []int32{
 	8, // 0: ztm.v1.ResolveServiceRequest.labels:type_name -> ztm.v1.ResolveServiceRequest.LabelsEntry
 	9, // 1: ztm.v1.ResolveServiceResponse.services:type_name -> ztm.v1.ServiceAnnouncement
-	0, // 2: ztm.v1.NodeRPC.JoinCluster:input_type -> ztm.v1.JoinClusterRequest
-	2, // 3: ztm.v1.NodeRPC.ResolveService:input_type -> ztm.v1.ResolveServiceRequest
-	4, // 4: ztm.v1.NodeRPC.PushPolicy:input_type -> ztm.v1.PushPolicyRequest
-	6, // 5: ztm.v1.NodeRPC.HealthCheck:input_type -> ztm.v1.HealthCheckRequest
-	1, // 6: ztm.v1.NodeRPC.JoinCluster:output_type -> ztm.v1.JoinClusterResponse
-	3, // 7: ztm.v1.NodeRPC.ResolveService:output_type -> ztm.v1.ResolveServiceResponse
-	5, // 8: ztm.v1.NodeRPC.PushPolicy:output_type -> ztm.v1.PushPolicyResponse
-	7, // 9: ztm.v1.NodeRPC.HealthCheck:output_type -> ztm.v1.HealthCheckResponse
+	0, // 2: ztm.v1.NodeService.JoinCluster:input_type -> ztm.v1.JoinClusterRequest
+	2, // 3: ztm.v1.NodeService.ResolveService:input_type -> ztm.v1.ResolveServiceRequest
+	4, // 4: ztm.v1.NodeService.PushPolicy:input_type -> ztm.v1.PushPolicyRequest
+	6, // 5: ztm.v1.NodeService.HealthCheck:input_type -> ztm.v1.HealthCheckRequest
+	1, // 6: ztm.v1.NodeService.JoinCluster:output_type -> ztm.v1.JoinClusterResponse
+	3, // 7: ztm.v1.NodeService.ResolveService:output_type -> ztm.v1.ResolveServiceResponse
+	5, // 8: ztm.v1.NodeService.PushPolicy:output_type -> ztm.v1.PushPolicyResponse
+	7, // 9: ztm.v1.NodeService.HealthCheck:output_type -> ztm.v1.HealthCheckResponse
 	6, // [6:10] is the sub-list for method output_type
 	2, // [2:6] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
