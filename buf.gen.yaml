@@ -1,9 +1,4 @@
 version: v2
-managed:
-  enabled: true
-  override:
-    - file_option: go_package_prefix
-      value: ztm/api/proto
 inputs:
   - directory: api/proto
 plugins:
