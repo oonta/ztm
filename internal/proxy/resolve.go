@@ -1,8 +1,8 @@
 package proxy
 
 import (
-	"fmt"
 	"net"
+	"strconv"
 
 	"ztm/internal/registry"
 )
@@ -19,7 +19,7 @@ func ResolveLocal(reg *registry.Registry, nodeID, name string) (host string, por
 
 // DialTCP connects to host:port.
 func DialTCP(host string, port uint32) (net.Conn, error) {
-	return net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+	return net.Dial("tcp", net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10)))
 }
 
 // ServiceNameFromHost maps SOCKS target host to logical service name.
