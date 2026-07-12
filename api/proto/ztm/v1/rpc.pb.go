@@ -477,6 +477,118 @@ func (x *HealthCheckResponse) GetGossipOk() bool {
 	return false
 }
 
+type RelayStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetNodeId  string                 `protobuf:"bytes,1,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelayStatsRequest) Reset() {
+	*x = RelayStatsRequest{}
+	mi := &file_ztm_v1_rpc_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelayStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelayStatsRequest) ProtoMessage() {}
+
+func (x *RelayStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ztm_v1_rpc_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelayStatsRequest.ProtoReflect.Descriptor instead.
+func (*RelayStatsRequest) Descriptor() ([]byte, []int) {
+	return file_ztm_v1_rpc_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RelayStatsRequest) GetTargetNodeId() string {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return ""
+}
+
+type RelayStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BytesIn       uint64                 `protobuf:"varint,1,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`
+	BytesOut      uint64                 `protobuf:"varint,2,opt,name=bytes_out,json=bytesOut,proto3" json:"bytes_out,omitempty"`
+	ActiveStreams uint32                 `protobuf:"varint,3,opt,name=active_streams,json=activeStreams,proto3" json:"active_streams,omitempty"`
+	ErrorRate     float32                `protobuf:"fixed32,4,opt,name=error_rate,json=errorRate,proto3" json:"error_rate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelayStatsResponse) Reset() {
+	*x = RelayStatsResponse{}
+	mi := &file_ztm_v1_rpc_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelayStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelayStatsResponse) ProtoMessage() {}
+
+func (x *RelayStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ztm_v1_rpc_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelayStatsResponse.ProtoReflect.Descriptor instead.
+func (*RelayStatsResponse) Descriptor() ([]byte, []int) {
+	return file_ztm_v1_rpc_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RelayStatsResponse) GetBytesIn() uint64 {
+	if x != nil {
+		return x.BytesIn
+	}
+	return 0
+}
+
+func (x *RelayStatsResponse) GetBytesOut() uint64 {
+	if x != nil {
+		return x.BytesOut
+	}
+	return 0
+}
+
+func (x *RelayStatsResponse) GetActiveStreams() uint32 {
+	if x != nil {
+		return x.ActiveStreams
+	}
+	return 0
+}
+
+func (x *RelayStatsResponse) GetErrorRate() float32 {
+	if x != nil {
+		return x.ErrorRate
+	}
+	return 0
+}
+
 var File_ztm_v1_rpc_proto protoreflect.FileDescriptor
 
 const file_ztm_v1_rpc_proto_rawDesc = "" +
@@ -519,13 +631,23 @@ const file_ztm_v1_rpc_proto_rawDesc = "" +
 	"\n" +
 	"latency_ms\x18\x02 \x01(\rR\tlatencyMs\x12\x17\n" +
 	"\amesh_ok\x18\x03 \x01(\bR\x06meshOk\x12\x1b\n" +
-	"\tgossip_ok\x18\x04 \x01(\bR\bgossipOk2\xb3\x02\n" +
+	"\tgossip_ok\x18\x04 \x01(\bR\bgossipOk\"9\n" +
+	"\x11RelayStatsRequest\x12$\n" +
+	"\x0etarget_node_id\x18\x01 \x01(\tR\ftargetNodeId\"\x92\x01\n" +
+	"\x12RelayStatsResponse\x12\x19\n" +
+	"\bbytes_in\x18\x01 \x01(\x04R\abytesIn\x12\x1b\n" +
+	"\tbytes_out\x18\x02 \x01(\x04R\bbytesOut\x12%\n" +
+	"\x0eactive_streams\x18\x03 \x01(\rR\ractiveStreams\x12\x1d\n" +
+	"\n" +
+	"error_rate\x18\x04 \x01(\x02R\terrorRate2\xf8\x02\n" +
 	"\vNodeService\x12F\n" +
 	"\vJoinCluster\x12\x1a.ztm.v1.JoinClusterRequest\x1a\x1b.ztm.v1.JoinClusterResponse\x12O\n" +
 	"\x0eResolveService\x12\x1d.ztm.v1.ResolveServiceRequest\x1a\x1e.ztm.v1.ResolveServiceResponse\x12C\n" +
 	"\n" +
 	"PushPolicy\x12\x19.ztm.v1.PushPolicyRequest\x1a\x1a.ztm.v1.PushPolicyResponse\x12F\n" +
-	"\vHealthCheck\x12\x1a.ztm.v1.HealthCheckRequest\x1a\x1b.ztm.v1.HealthCheckResponseB\x1cZ\x1aztm/api/proto/ztm/v1;ztmv1b\x06proto3"
+	"\vHealthCheck\x12\x1a.ztm.v1.HealthCheckRequest\x1a\x1b.ztm.v1.HealthCheckResponse\x12C\n" +
+	"\n" +
+	"RelayStats\x12\x19.ztm.v1.RelayStatsRequest\x1a\x1a.ztm.v1.RelayStatsResponseB\x1cZ\x1aztm/api/proto/ztm/v1;ztmv1b\x06proto3"
 
 var (
 	file_ztm_v1_rpc_proto_rawDescOnce sync.Once
@@ -539,7 +661,7 @@ func file_ztm_v1_rpc_proto_rawDescGZIP() []byte {
 	return file_ztm_v1_rpc_proto_rawDescData
 }
 
-var file_ztm_v1_rpc_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_ztm_v1_rpc_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_ztm_v1_rpc_proto_goTypes = []any{
 	(*JoinClusterRequest)(nil),     // 0: ztm.v1.JoinClusterRequest
 	(*JoinClusterResponse)(nil),    // 1: ztm.v1.JoinClusterResponse
@@ -549,25 +671,29 @@ var file_ztm_v1_rpc_proto_goTypes = []any{
 	(*PushPolicyResponse)(nil),     // 5: ztm.v1.PushPolicyResponse
 	(*HealthCheckRequest)(nil),     // 6: ztm.v1.HealthCheckRequest
 	(*HealthCheckResponse)(nil),    // 7: ztm.v1.HealthCheckResponse
-	nil,                            // 8: ztm.v1.ResolveServiceRequest.LabelsEntry
-	(*ServiceAnnouncement)(nil),    // 9: ztm.v1.ServiceAnnouncement
+	(*RelayStatsRequest)(nil),      // 8: ztm.v1.RelayStatsRequest
+	(*RelayStatsResponse)(nil),     // 9: ztm.v1.RelayStatsResponse
+	nil,                            // 10: ztm.v1.ResolveServiceRequest.LabelsEntry
+	(*ServiceAnnouncement)(nil),    // 11: ztm.v1.ServiceAnnouncement
 }
 var file_ztm_v1_rpc_proto_depIdxs = []int32{
-	8, // 0: ztm.v1.ResolveServiceRequest.labels:type_name -> ztm.v1.ResolveServiceRequest.LabelsEntry
-	9, // 1: ztm.v1.ResolveServiceResponse.services:type_name -> ztm.v1.ServiceAnnouncement
-	0, // 2: ztm.v1.NodeService.JoinCluster:input_type -> ztm.v1.JoinClusterRequest
-	2, // 3: ztm.v1.NodeService.ResolveService:input_type -> ztm.v1.ResolveServiceRequest
-	4, // 4: ztm.v1.NodeService.PushPolicy:input_type -> ztm.v1.PushPolicyRequest
-	6, // 5: ztm.v1.NodeService.HealthCheck:input_type -> ztm.v1.HealthCheckRequest
-	1, // 6: ztm.v1.NodeService.JoinCluster:output_type -> ztm.v1.JoinClusterResponse
-	3, // 7: ztm.v1.NodeService.ResolveService:output_type -> ztm.v1.ResolveServiceResponse
-	5, // 8: ztm.v1.NodeService.PushPolicy:output_type -> ztm.v1.PushPolicyResponse
-	7, // 9: ztm.v1.NodeService.HealthCheck:output_type -> ztm.v1.HealthCheckResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	10, // 0: ztm.v1.ResolveServiceRequest.labels:type_name -> ztm.v1.ResolveServiceRequest.LabelsEntry
+	11, // 1: ztm.v1.ResolveServiceResponse.services:type_name -> ztm.v1.ServiceAnnouncement
+	0,  // 2: ztm.v1.NodeService.JoinCluster:input_type -> ztm.v1.JoinClusterRequest
+	2,  // 3: ztm.v1.NodeService.ResolveService:input_type -> ztm.v1.ResolveServiceRequest
+	4,  // 4: ztm.v1.NodeService.PushPolicy:input_type -> ztm.v1.PushPolicyRequest
+	6,  // 5: ztm.v1.NodeService.HealthCheck:input_type -> ztm.v1.HealthCheckRequest
+	8,  // 6: ztm.v1.NodeService.RelayStats:input_type -> ztm.v1.RelayStatsRequest
+	1,  // 7: ztm.v1.NodeService.JoinCluster:output_type -> ztm.v1.JoinClusterResponse
+	3,  // 8: ztm.v1.NodeService.ResolveService:output_type -> ztm.v1.ResolveServiceResponse
+	5,  // 9: ztm.v1.NodeService.PushPolicy:output_type -> ztm.v1.PushPolicyResponse
+	7,  // 10: ztm.v1.NodeService.HealthCheck:output_type -> ztm.v1.HealthCheckResponse
+	9,  // 11: ztm.v1.NodeService.RelayStats:output_type -> ztm.v1.RelayStatsResponse
+	7,  // [7:12] is the sub-list for method output_type
+	2,  // [2:7] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_ztm_v1_rpc_proto_init() }
@@ -582,7 +708,7 @@ func file_ztm_v1_rpc_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztm_v1_rpc_proto_rawDesc), len(file_ztm_v1_rpc_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

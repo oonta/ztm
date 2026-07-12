@@ -211,6 +211,16 @@ func (a *Agent) Run(ctx context.Context) error {
 			return a.mesh.PeerIDs()
 		},
 	}
+	peerStats := &rpc.PeerStatsCache{
+		NodeID:   a.cfg.NodeID,
+		Identity: a.identity,
+		Members: func() []gossip.Member {
+			if a.gossip == nil {
+				return nil
+			}
+			return a.gossip.Members()
+		},
+	}
 	a.tunnel = &tunnel.Server{}
 	if err := a.tunnel.Listen(ctx, a.cfg.ClientBind, tunnel.ServerConfig{
 		NodeID:        a.cfg.NodeID,
@@ -218,6 +228,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		ServiceFinder: serviceResolver,
 		Policy:        pol,
 		Mesh:          a.mesh,
+		Loads:         peerStats,
 		Metrics:       m,
 		TLS:           tunnelTLS,
 	}); err != nil {

@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"sync/atomic"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -17,6 +19,13 @@ type Collector struct {
 	RelayBytes        prometheus.Counter
 	ACLDenied         prometheus.Counter
 	RPCRequests       *prometheus.CounterVec
+
+	relayBytesIn        uint64
+	relayBytesOut       uint64
+	relaySuccess        uint64
+	relayFailures       uint64
+	tunnelStreamsActive int32
+	meshRelayActive     int32
 }
 
 // New creates and registers ZTM metrics.
@@ -102,12 +111,14 @@ func (c *Collector) TunnelConnClosed() {
 func (c *Collector) TunnelStreamOpened() {
 	if c != nil {
 		c.TunnelStreams.Inc()
+		atomic.AddInt32(&c.tunnelStreamsActive, 1)
 	}
 }
 
 func (c *Collector) TunnelStreamClosed() {
 	if c != nil {
 		c.TunnelStreams.Dec()
+		atomic.AddInt32(&c.tunnelStreamsActive, -1)
 	}
 }
 

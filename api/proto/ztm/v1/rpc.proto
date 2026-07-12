@@ -12,6 +12,7 @@ service NodeService {
   rpc ResolveService(ResolveServiceRequest) returns (ResolveServiceResponse);
   rpc PushPolicy(PushPolicyRequest) returns (PushPolicyResponse);
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc RelayStats(RelayStatsRequest) returns (RelayStatsResponse);
 }
 
 message JoinClusterRequest {
@@ -57,4 +58,15 @@ message HealthCheckResponse {
   uint32 latency_ms = 2;
   bool mesh_ok = 3;
   bool gossip_ok = 4;
+}
+
+message RelayStatsRequest {
+  string target_node_id = 1;
+}
+
+message RelayStatsResponse {
+  uint64 bytes_in = 1;
+  uint64 bytes_out = 2;
+  uint32 active_streams = 3;
+  float error_rate = 4;
 }

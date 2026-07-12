@@ -27,6 +27,10 @@ type RelayHandler struct {
 // HandleStream proxies a mesh relay request to a local backend.
 func (h *RelayHandler) HandleStream(peerID string, stream *quic.Stream) {
 	defer stream.Close()
+	if h.Metrics != nil {
+		h.Metrics.MeshRelayStarted()
+		defer h.Metrics.MeshRelayFinished()
+	}
 
 	reader := bufio.NewReader(stream)
 	req, err := protocol.ReadConnectRequest(reader)
@@ -64,6 +68,9 @@ func (h *RelayHandler) HandleStream(peerID string, stream *quic.Stream) {
 
 	backend, err := proxy.DialTCP(host, port)
 	if err != nil {
+		if h.Metrics != nil {
+			h.Metrics.RecordRelayFailure()
+		}
 		_ = protocol.WriteConnectResponse(stream, protocol.ConnectResponse{OK: false, Reason: "BACKEND_UNREACHABLE"})
 		return
 	}

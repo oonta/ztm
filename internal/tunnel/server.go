@@ -26,6 +26,7 @@ type Server struct {
 	finder   ServiceFinder
 	policy   *policy.Policy
 	mesh     PeerRelay
+	loads    LoadProvider
 	metrics  *metrics.Collector
 	listener *quic.Listener
 	addr     string
@@ -38,6 +39,11 @@ type ServiceFinder interface {
 	FindByName(ctx context.Context, name string) []registry.Service
 }
 
+// LoadProvider supplies peer relay load for weighted routing.
+type LoadProvider interface {
+	Loads(ctx context.Context, nodeIDs []string) map[string]router.NodeLoad
+}
+
 // ServerConfig configures the client tunnel server.
 type ServerConfig struct {
 	NodeID        string
@@ -45,6 +51,7 @@ type ServerConfig struct {
 	ServiceFinder ServiceFinder
 	Policy        *policy.Policy
 	Mesh          PeerRelay
+	Loads         LoadProvider
 	Metrics       *metrics.Collector
 	TLS           *tls.Config
 }
@@ -59,6 +66,7 @@ func (s *Server) Listen(ctx context.Context, addr string, cfg ServerConfig) erro
 	s.finder = cfg.ServiceFinder
 	s.policy = cfg.Policy
 	s.mesh = cfg.Mesh
+	s.loads = cfg.Loads
 	s.metrics = cfg.Metrics
 
 	ln, err := quic.ListenAddr(addr, cfg.TLS, nil)
@@ -173,7 +181,26 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	if s.mesh != nil {
 		peers = s.mesh.PeerIDs()
 	}
-	candidates := router.Candidates(s.findServices(ctx, service), s.nodeID, peers)
+	services := s.findServices(ctx, service)
+	var loads map[string]router.NodeLoad
+	if s.loads != nil {
+		ids := make([]string, 0, len(services))
+		seen := make(map[string]struct{})
+		for _, svc := range services {
+			if svc.NodeID == s.nodeID || svc.NodeID == "" {
+				continue
+			}
+			if _, ok := seen[svc.NodeID]; ok {
+				continue
+			}
+			seen[svc.NodeID] = struct{}{}
+			ids = append(ids, svc.NodeID)
+		}
+		if len(ids) > 0 {
+			loads = s.loads.Loads(ctx, ids)
+		}
+	}
+	candidates := router.Candidates(services, s.nodeID, peers, loads)
 	if len(candidates) == 0 {
 		_ = WriteConnectResponse(stream, ConnectResponse{OK: false, Reason: "SERVICE_NOT_FOUND"})
 		return
@@ -227,6 +254,9 @@ func (s *Server) findServices(ctx context.Context, name string) []registry.Servi
 func (s *Server) tryRelayLocal(stream *quic.Stream, service string, target registry.Service) bool {
 	backend, err := proxy.DialTCP(target.Host, target.Port)
 	if err != nil {
+		if s.metrics != nil {
+			s.metrics.RecordRelayFailure()
+		}
 		return false
 	}
 

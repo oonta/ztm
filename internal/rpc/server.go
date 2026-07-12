@@ -83,6 +83,7 @@ func (s *Server) Listen(addr string, opts Options) (string, error) {
 		nodeIDTaken:       opts.NodeIDTaken,
 		meshPeers:         opts.MeshPeers,
 		gossipMemberCount: opts.GossipMemberCount,
+		metrics:           opts.Metrics,
 	})
 
 	go func() {
@@ -138,6 +139,7 @@ type nodeRPC struct {
 	nodeIDTaken       func(string) bool
 	meshPeers         func() []string
 	gossipMemberCount func() int
+	metrics           *metrics.Collector
 }
 
 func (n *nodeRPC) requireNodePeer(ctx context.Context) error {
@@ -278,5 +280,24 @@ func (n *nodeRPC) PushPolicy(ctx context.Context, req *ztmv1.PushPolicyRequest) 
 	}
 	accepted, _ := n.policy.ApplyBundle(&b, req.GetMinVersion())
 	return &ztmv1.PushPolicyResponse{AcceptedVersion: accepted}, nil
+}
+
+func (n *nodeRPC) RelayStats(ctx context.Context, req *ztmv1.RelayStatsRequest) (*ztmv1.RelayStatsResponse, error) {
+	if err := n.requireNodePeer(ctx); err != nil {
+		return nil, err
+	}
+	if tid := req.GetTargetNodeId(); tid != "" && tid != n.nodeID {
+		return nil, status.Error(codes.NotFound, "unknown target node")
+	}
+	snap := metrics.RelaySnapshot{}
+	if n.metrics != nil {
+		snap = n.metrics.SnapshotRelay()
+	}
+	return &ztmv1.RelayStatsResponse{
+		BytesIn:       snap.BytesIn,
+		BytesOut:      snap.BytesOut,
+		ActiveStreams: snap.ActiveStreams,
+		ErrorRate:     snap.ErrorRate,
+	}, nil
 }
 

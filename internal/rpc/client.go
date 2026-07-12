@@ -82,3 +82,10 @@ func (c *Client) ResolveService(ctx context.Context, name string, labels map[str
 	return resp, nil
 }
 
+func (c *Client) RelayStats(ctx context.Context, targetNodeID string) (*ztmv1.RelayStatsResponse, error) {
+	resp, err := c.rpc.RelayStats(ctx, &ztmv1.RelayStatsRequest{TargetNodeId: targetNodeID})
+	if err != nil {
+		return nil, status.Convert(err).Err()
+	}
+	return resp, nil
+}

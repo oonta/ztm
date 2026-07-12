@@ -23,6 +23,7 @@ const (
 	NodeService_ResolveService_FullMethodName = "/ztm.v1.NodeService/ResolveService"
 	NodeService_PushPolicy_FullMethodName     = "/ztm.v1.NodeService/PushPolicy"
 	NodeService_HealthCheck_FullMethodName    = "/ztm.v1.NodeService/HealthCheck"
+	NodeService_RelayStats_FullMethodName     = "/ztm.v1.NodeService/RelayStats"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -35,6 +36,7 @@ type NodeServiceClient interface {
 	ResolveService(ctx context.Context, in *ResolveServiceRequest, opts ...grpc.CallOption) (*ResolveServiceResponse, error)
 	PushPolicy(ctx context.Context, in *PushPolicyRequest, opts ...grpc.CallOption) (*PushPolicyResponse, error)
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	RelayStats(ctx context.Context, in *RelayStatsRequest, opts ...grpc.CallOption) (*RelayStatsResponse, error)
 }
 
 type nodeServiceClient struct {
@@ -85,6 +87,16 @@ func (c *nodeServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequ
 	return out, nil
 }
 
+func (c *nodeServiceClient) RelayStats(ctx context.Context, in *RelayStatsRequest, opts ...grpc.CallOption) (*RelayStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RelayStatsResponse)
+	err := c.cc.Invoke(ctx, NodeService_RelayStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServiceServer is the server API for NodeService service.
 // All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
@@ -95,6 +107,7 @@ type NodeServiceServer interface {
 	ResolveService(context.Context, *ResolveServiceRequest) (*ResolveServiceResponse, error)
 	PushPolicy(context.Context, *PushPolicyRequest) (*PushPolicyResponse, error)
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	RelayStats(context.Context, *RelayStatsRequest) (*RelayStatsResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
 
@@ -116,6 +129,9 @@ func (UnimplementedNodeServiceServer) PushPolicy(context.Context, *PushPolicyReq
 }
 func (UnimplementedNodeServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedNodeServiceServer) RelayStats(context.Context, *RelayStatsRequest) (*RelayStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RelayStats not implemented")
 }
 func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
 func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
@@ -210,6 +226,24 @@ func _NodeService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_RelayStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RelayStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).RelayStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_RelayStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).RelayStats(ctx, req.(*RelayStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -232,6 +266,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _NodeService_HealthCheck_Handler,
+		},
+		{
+			MethodName: "RelayStats",
+			Handler:    _NodeService_RelayStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
